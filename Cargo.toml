@@ -4,5 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-eframe = "0.37.0"
+eframe = { version = "0.37", default-features = false, features = ["glow", "default_fonts"] } # Tells eframe to use glow (OpenGL) as the renderer. This reduces the crashing on some systems.
+egui = "0.37.0"
+rfd = "0.17.2"
 rodio = "0.21"
