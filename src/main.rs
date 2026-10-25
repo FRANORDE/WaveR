@@ -76,12 +76,32 @@ impl eframe::App for WaveR {
     // ^ eframe::App is a trait, a contract: "to be an eframe app you must have a ui() function"
     // 'for WaveR' means "WaveR follows this contract"
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        // ^ &mut self = our app data, ui = the "brush" we use to draw widgets
         if self.sink.empty() && !self.queue.is_empty() {
             let next = self.queue.remove(0); // take the first song out of the queue
             self.play_file(&next); // play it
         }
 
-        // ^ &mut self = our app data, ui = the "brush" we use to draw widgets
+        egui::Panel::right("queue_panel").show(ui, |ui| {
+            ui.heading("Queue");
+            let mut to_remove: Option<usize> = None;
+            egui::ScrollArea::vertical().show(ui, |ui| {
+                for (i, path) in self.queue.iter().enumerate() {
+                    ui.horizontal(|ui| {
+                        if ui.button("x").clicked() {
+                            to_remove = Some(i);
+                        }
+                        if let Some(name) = path.file_name() {
+                            ui.label(name.to_string_lossy());
+                        }
+                    });
+                }
+            });
+            if let Some(i) = to_remove {
+                self.queue.remove(i);
+            }
+        });
+
         egui::CentralPanel::default().show(ui, |ui| {
             // ^ a panel that fills the whole window. The closure |ui| is the content inside it
             ui.heading("WaveR"); // big title text
@@ -105,6 +125,12 @@ impl eframe::App for WaveR {
                 // opens the file window, gives Some(path) or None if cancelled
                 {
                     self.queue.extend(files);
+                }
+            }
+            if ui.button("Add folder").clicked() {
+                // pick_folder() gives Some(path) if the user chooses a folder, None if cancelled
+                if let Some(folder) = rfd::FileDialog::new().pick_folder() {
+                    self.queue.extend(collect_songs(&folder)); // add all the songs found
                 }
             }
 
@@ -173,4 +199,34 @@ fn format_time(secs: f32) -> String {
     // ^ turns seconds into a text like 3:05
     let total = secs as u32; // remove the decimals
     format!("{}:{:02}", total / 60, total % 60) // minutes : seconds (always 2 digits)
+}
+
+fn collect_songs(folder: &Path) -> Vec<PathBuf> {
+    let mut songs = Vec::new(); // the list we will return
+
+    // read_dir gives a Result: if the folder can't be read, return the empty list
+    let entries = match std::fs::read_dir(folder) {
+        Ok(e) => e,
+        Err(_) => return songs,
+    };
+
+    for entry in entries {
+        // each entry is a Result too (the file could be unreadable)
+        let entry = match entry {
+            Ok(e) => e,
+            Err(_) => continue, // skip this one and go to the next
+        };
+        let path = entry.path(); // the full path of the file
+
+        // check the file extension: only keep audio files
+        if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+            let ext = ext.to_lowercase(); // so ".MP3" works too
+            if ["mp3", "flac", "wav", "ogg"].contains(&ext.as_str()) {
+                songs.push(path); // add the song to the list we return
+            }
+        }
+    } // <- this closes the for loop
+
+    songs.sort(); // read_dir gives no order, so we sort the songs
+    songs // no ';' here: this is the value the function returns
 }
