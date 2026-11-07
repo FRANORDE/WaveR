@@ -16,7 +16,7 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
-      - name: Compile relase
+      - name: Compile release
         run: cargo build --release --locked
       - name: dir
         run: dir target\release\WaveR.exe
@@ -33,7 +33,7 @@ jobs:
           retention-days: 5           # how many days GitHub keeps it
       - name: Create portable zip
         run: Compress-Archive -Path target\release\WaveR.exe, LICENSE, licenses\THIRD-PARTY-NOTICES.txt -DestinationPath dist\WaveR-x64.zip
-      - name: Create draft
+      - name: Create release draft
         if: startsWith(github.ref, 'refs/tags/')
         shell: bash
         env:
