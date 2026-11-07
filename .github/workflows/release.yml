@@ -34,9 +34,15 @@ jobs:
         run: |
           Copy-Item LICENSE dist\WaveR-LICENSE.txt
           Compress-Archive -Path target\release\WaveR.exe, dist\WaveR-LICENSE.txt, licenses\THIRD-PARTY-NOTICES.txt -DestinationPath dist\WaveR-x64.zip
+      - name: Get ZIP hash
+        run: |
+          $hash = (Get-FileHash dist\WaveR-x64.zip -Algorithm SHA256).Hash.ToLower()
+          Write-Host "SHA256: $hash"
+          "SHA256 of WaveR-x64.zip: $hash" | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
+          "$hash  WaveR-x64.zip" | Out-File -Encoding ascii dist\WaveR-x64.zip.sha256
       - name: Create release draft
         if: startsWith(github.ref, 'refs/tags/')
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "${{ github.ref_name }}" dist/*.exe dist/*.zip --title "${{ github.ref_name }}" --generate-notes --draft
+        run: gh release create "${{ github.ref_name }}" dist/*.exe dist/*.zip dist/*.sha256  --title "${{ github.ref_name }}" --generate-notes --draft
