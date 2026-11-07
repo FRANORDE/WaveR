@@ -15,4 +15,7 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
-      - run: dir
+      - name: build
+        run: cargo build --release --locked
+      - name: dir
+        run: dir target\release\WaveR.exe
