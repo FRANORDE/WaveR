@@ -19,11 +19,11 @@ jobs:
         run: cargo build --release --locked
       - name: dir
         run: dir target\release\WaveR.exe
-      - name: Installer
+      - name: installer
         run: '& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" WaveR.iss'
       - name: dist
         run: dir dist
-      - name: Upload installer
+      - name: upload installer
         uses: actions/upload-artifact@v6
         with:
           name: WaveR-Setup           # the name you will see in the Artifacts list
