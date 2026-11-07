@@ -30,11 +30,9 @@ The volume slider only changes WaveR’s volume, not the system volume.
 
 # Installation
 
-## Step 1
+## Installer
 
 Download the latest `WaveR-Setup-<version>.exe` from the [releases page](https://github.com/FRANORDE/WaveR/releases/latest) (use releases! Downloading the code directly might be unstable).
-
-## Step 2
 
 Run the installer and follow the wizard. By default WaveR is installed in `%USERPROFILE%\.waver` and no administrator rights are needed.
 
@@ -44,9 +42,31 @@ The wizard lets you choose:
 > **Note:** since the installer is not code-signed, Windows SmartScreen may show a warning the first time.
 > Click **More info → Run anyway**.
 
-## Uninstall
+### Uninstall
 
 Use **Settings → Apps → Installed apps** and remove WaveR.
+
+## Scoop
+
+Requires [Scoop](https://scoop.sh/) installed
+
+---
+
+```
+scoop bucket add franorde https://github.com/FRANORDE/scoop-bucket
+scoop install waver
+```
+
+### Uninstall
+
+```
+scoop uninstall waver
+scoop bucket rm franorde
+```
+
+---
+
+More info at [scoop-bucket](https://github.com/FRANORDE/scoop-bucket/tree/main#installation)
 
 # Usage
 
