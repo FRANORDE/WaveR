@@ -31,7 +31,9 @@ jobs:
           if-no-files-found: error    # fail the step if no installer exists
           retention-days: 5           # how many days GitHub keeps it
       - name: Create portable zip
-        run: Compress-Archive -Path target\release\WaveR.exe, LICENSE, licenses\THIRD-PARTY-NOTICES.txt -DestinationPath dist\WaveR-x64.zip
+        run: |
+          Copy-Item LICENSE dist\WaveR-LICENSE.txt
+          Compress-Archive -Path target\release\WaveR.exe, dist\WaveR-LICENSE.txt, licenses\THIRD-PARTY-NOTICES.txt -DestinationPath dist\WaveR-x64.zip
       - name: Create release draft
         if: startsWith(github.ref, 'refs/tags/')
         shell: bash
