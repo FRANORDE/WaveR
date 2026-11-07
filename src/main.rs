@@ -1,19 +1,26 @@
 // Comments for me to understand code (im a noob to Rust), but also for you to understand what is going on
+// This syntax down below is an attribute and it talks to the entire file
+// it basically means: Only on releases versions, tell windows to not open a terminal window
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 // imports bring code from other crates, so we can write less code
 // so, this ones below help you write less code, and make it more readable
-use eframe::egui;
+use eframe::{NativeOptions, egui};
 use rodio::{Decoder, OutputStream, OutputStreamBuilder, Sink, Source};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 fn main() -> eframe::Result {
     // ^ main returns a Result, which can be Ok or Err
+
+    let options = NativeOptions {
+        viewport: egui::ViewportBuilder::default().with_icon(load_icon()),
+        ..Default::default() // all the other fields keep their default value
+    };
+
     eframe::run_native(
-        // ^ this opens the window and keeps the program running until it closes
-        "WaveR",                          // window title
-        eframe::NativeOptions::default(), // "default" means standard window options
-        Box::new(|_cc| Ok(Box::new(WaveR::new()))), // a closure called once at start
-                                          // WaveR::new() creates the actual app
+        "WaveR",
+        options, // TODO: use your `options` here instead of eframe::NativeOptions::default()
+        Box::new(|_cc| Ok(Box::new(WaveR::new()))),
     )
 }
 
@@ -102,6 +109,71 @@ impl eframe::App for WaveR {
             }
         });
 
+        egui::Panel::bottom("controls").show(ui, |ui| {
+            // vertical_centered centers everything inside it horizontally, like Spotify
+            ui.vertical_centered(|ui| {
+                // "playing" is true only if a song is loaded and it is not paused
+                let playing = !self.sink.is_paused() && !self.sink.empty();
+
+                // round_button returns a Response, so .clicked() works like with ui.button()
+                if round_button(ui, playing).clicked() {
+                    if self.sink.is_paused() {
+                        self.sink.play(); // it was paused: resume
+                    } else {
+                        self.sink.pause(); // it was playing: pause
+                    }
+                }
+            });
+
+            if let Some(total) = self.total {
+                // ^ only show the bar if the song duration is known
+                let total_secs = total.as_secs_f32(); // Duration -> seconds as a decimal number
+
+                // while dragging show the dragged value, else the real song position
+                let mut position = self.drag_pos.unwrap_or(self.sink.get_pos().as_secs_f32());
+
+                ui.horizontal(|ui| {
+                    // ^ the three widgets (current time, bar, total time) go side by side
+                    ui.spacing_mut().slider_width = ui.available_width() - 100.0; // width of the duration line
+
+                    ui.label(format_time(position));
+
+                    let response = ui
+                        .add(egui::Slider::new(&mut position, 0.0..=total_secs).show_value(false));
+
+                    if response.dragged() {
+                        // the user is holding the bar: only remember the value, don't jump yet
+                        self.drag_pos = Some(position);
+                    } else if response.drag_stopped() {
+                        // the user just released the bar: now jump to that point
+                        let _ = self.sink.try_seek(Duration::from_secs_f32(position));
+                        self.drag_pos = None; // back to following the real position
+                    } else if response.changed() {
+                        // a simple click on the bar (no drag): jump right away
+                        let _ = self.sink.try_seek(Duration::from_secs_f32(position));
+                    }
+
+                    ui.label(format_time(total_secs)); // show the total time on the right of the bar
+                });
+            }
+            // with_layout lets you choose the direction widgets are placed in
+            // right_to_left starts from the right edge, so the first widget ends up at the far right
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                let mut volume = self.sink.volume(); // read the current volume (0.0 to 1.0)
+                if ui
+                    .add(
+                        egui::Slider::new(&mut volume, 0.0..=1.0)
+                            .show_value(false)
+                            .text("Volume"),
+                    )
+                    .changed()
+                {
+                    // only when the user moves the slider, apply the new volume
+                    self.sink.set_volume(volume);
+                }
+            });
+        });
+
         egui::CentralPanel::default().show(ui, |ui| {
             // ^ a panel that fills the whole window. The closure |ui| is the content inside it
             ui.heading("WaveR"); // big title text
@@ -136,63 +208,80 @@ impl eframe::App for WaveR {
 
             ui.label(format!("Queue: {} songs", self.queue.len()));
 
-            if let Some(total) = self.total {
-                // ^ only show the bar if the song duration is known
-                let total_secs = total.as_secs_f32(); // Duration -> seconds as a decimal number
-
-                // while dragging show the dragged value, else the real song position
-                let mut position = self.drag_pos.unwrap_or(self.sink.get_pos().as_secs_f32());
-
-                let response =
-                    ui.add(egui::Slider::new(&mut position, 0.0..=total_secs).show_value(false));
-
-                if response.dragged() {
-                    // ^ the user is holding the bar: only remember the value, don't jump yet
-                    self.drag_pos = Some(position);
-                } else if response.drag_stopped() {
-                    // ^ the user just released the bar: now jump to that point
-                    let _ = self.sink.try_seek(Duration::from_secs_f32(position));
-                    self.drag_pos = None; // back to following the real position
-                } else if response.changed() {
-                    // ^ a simple click on the bar (no drag): jump right away
-                    let _ = self.sink.try_seek(Duration::from_secs_f32(position));
-                }
-
-                // show the time like 1:23 / 3:45
-                ui.label(format!(
-                    "{} / {}",
-                    format_time(position),
-                    format_time(total_secs)
-                ));
-            }
-
             // show the song name, or "Nothing playing" if there is None
             ui.label(self.current_track.as_deref().unwrap_or("Nothing playing"));
-
-            ui.horizontal(|ui| {
-                // ^ horizontal puts the widgets side by side instead of one under the other
-                if ui.button("Pause").clicked() {
-                    self.sink.pause();
-                }
-                if ui.button("Play").clicked() {
-                    self.sink.play();
-                }
-            });
-
-            let mut volume = self.sink.volume(); // read the current volume (0.0 to 1.0)
-            if ui
-                .add(egui::Slider::new(&mut volume, 0.0..=1.0).text("Volume"))
-                .changed()
-            {
-                // ^ only when the user moves the slider, apply the new volume
-                self.sink.set_volume(volume);
-            }
 
             // egui only redraws when something happens, so we ask for a redraw every 200 ms
             // this keeps the progress bar moving by itself
             ui.ctx().request_repaint_after(Duration::from_millis(200));
         });
     }
+}
+
+fn round_button(ui: &mut egui::Ui, playing: bool) -> egui::Response {
+    // ^ returns a Response, so the caller can use .clicked() just like with ui.button()
+    let size = egui::vec2(40.0, 40.0); // width and height of the button
+
+    // reserve a square area; Sense::click() tells egui this area reacts to clicks
+    let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click());
+
+    // --- BUTTON COLOR: same as the panel background, but a bit darker ---
+    let bg_color = ui.visuals().panel_fill; // background color of the panels
+
+    // scale each color channel (red, green, blue) by 0.75 to make it darker
+    // .r() gives a u8 (0-255): we convert to f32 to multiply, then back to u8
+    let r = (bg_color.r() as f32 * 0.75) as u8;
+    let g = (bg_color.g() as f32 * 0.75) as u8;
+    let b = (bg_color.b() as f32 * 0.75) as u8;
+    let color = egui::Color32::from_rgb(r, g, b); // a new, fully opaque color
+
+    // draw the circle: center = middle of the rect, radius = half the width
+    ui.painter()
+        .circle_filled(rect.center(), rect.width() / 2.0, color);
+
+    let c = rect.center(); // the middle of the button, used as origin for the icons
+
+    // --- ANIMATION ---
+    // t moves smoothly from 0.0 to 1.0 (or back) when `playing` changes
+    // 0.0 = paused (show the play triangle), 1.0 = playing (show the pause bars)
+    // the last argument is the duration in seconds
+    let t = ui.ctx().animate_bool_with_time(response.id, playing, 0.15);
+
+    // gamma_multiply(x) changes the opacity: 1.0 = fully visible, 0.0 = invisible
+    let play_color = egui::Color32::WHITE.gamma_multiply(1.0 - t); // fades OUT when t grows
+    let pause_color = egui::Color32::WHITE.gamma_multiply(t); // fades IN when t grows
+
+    // --- PAUSE ICON: two vertical bars, one left and one right of the center ---
+    ui.painter().rect_filled(
+        egui::Rect::from_center_size(c + egui::vec2(-5.0, 0.0), egui::vec2(4.0, 14.0)),
+        1.0, // corner radius
+        pause_color,
+    );
+    ui.painter().rect_filled(
+        egui::Rect::from_center_size(c + egui::vec2(5.0, 0.0), egui::vec2(4.0, 14.0)),
+        1.0, // corner radius
+        pause_color,
+    );
+
+    // --- PLAY ICON: a triangle pointing right, defined by its 3 corners ---
+    let points = vec![
+        c + egui::vec2(-4.0, -8.0), // top left
+        c + egui::vec2(-4.0, 8.0),  // bottom left
+        c + egui::vec2(8.0, 0.0),   // right tip
+    ];
+    ui.painter().add(egui::Shape::convex_polygon(
+        points,
+        play_color,
+        egui::Stroke::NONE, // no outline
+    ));
+
+    response.on_hover_cursor(egui::CursorIcon::PointingHand) // hand cursor on hover
+}
+
+fn load_icon() -> egui::IconData {
+    let icon = eframe::icon_data::from_png_bytes(include_bytes!("../assets/WaveR.png"))
+        .expect("invalid icon"); // crashes with this message if the PNG is broken
+    icon
 }
 
 fn format_time(secs: f32) -> String {
