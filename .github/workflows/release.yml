@@ -1,4 +1,5 @@
 name: Release
+run-name: Create draft for release ${{ github.ref_name }}
 
 on:
   push:
@@ -29,7 +30,7 @@ jobs:
           name: WaveR-Setup           # the name you will see in the Artifacts list
           path: dist/*.exe            # which files to upload; the * matches any name
           if-no-files-found: error    # fail the step if no installer exists
-          retention-days: 7           # how many days GitHub keeps it
+          retention-days: 5           # how many days GitHub keeps it
       - name: Create portable zip
         run: Compress-Archive -Path target\release\WaveR.exe, LICENSE, licenses\THIRD-PARTY-NOTICES.txt -DestinationPath dist\WaveR-x64.zip
       - name: Create draft
