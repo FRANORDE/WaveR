@@ -19,3 +19,7 @@ jobs:
         run: cargo build --release --locked
       - name: dir
         run: dir target\release\WaveR.exe
+      - name: Installer
+        run: '& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" WaveR.iss'
+      - name: dist
+        run: dir dist
