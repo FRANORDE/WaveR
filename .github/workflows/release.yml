@@ -30,3 +30,11 @@ jobs:
           path: dist/*.exe            # which files to upload; the * matches any name
           if-no-files-found: error    # fail the step if no installer exists
           retention-days: 7           # how many days GitHub keeps it
+      - name: portable zip
+        run: Compress-Archive -Path target\release\WaveR.exe, LICENSE, licenses\THIRD-PARTY-NOTICES.txt -DestinationPath dist\WaveR-x64.zip
+      - name: Create release
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${{ github.ref_name }}" dist/*.exe dist/*.zip --title "WaveR ${{ github.ref_name }}" --generate-notes --draft
