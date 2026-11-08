@@ -15,6 +15,8 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
       - name: Compile release
         run: cargo build --release --locked
       - name: dir
