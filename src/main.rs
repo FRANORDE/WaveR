@@ -5,6 +5,7 @@
 // imports bring code from other crates, so we can write less code
 // so, this ones below help you write less code, and make it more readable
 use eframe::{NativeOptions, egui};
+use egui::epaint::FontColorTransferFunction::Off;
 use rodio::{Decoder, OutputStream, OutputStreamBuilder, Sink, Source};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -35,6 +36,8 @@ struct WaveR {
     current_path: Option<PathBuf>, // None when nothing has been played yet
     history: Vec<PathBuf>, // the last element is the most recent song
     show_about: bool,
+    show_queue: bool,
+    show_history: bool,
 }
 
 impl WaveR {
@@ -57,6 +60,8 @@ impl WaveR {
             current_path: None,
             history: Vec::new(),
             show_about: false,
+            show_queue: true,
+            show_history: false,
         }
     }
 
@@ -197,10 +202,17 @@ impl eframe::App for WaveR {
                         ui.close();
                     }
                 });
+                ui.menu_button("Panels", |ui| {
+                    ui.checkbox(&mut self.show_queue, "Queue");
+                    ui.checkbox(&mut self.show_history, "History");
+                });
                 ui.menu_button("Help", |ui| {
                     if ui.button("About").clicked() {
                         self.show_about = true;
                         ui.close();
+                    }
+                    if ui.button("Open an issue").clicked() {
+                        let _ = webbrowser::open("https://github.com/FRANORDE/WaveR/issues/new");
                     }
                 });
             });
@@ -219,25 +231,54 @@ impl eframe::App for WaveR {
                 }
             });
 
-        egui::Panel::right("queue_panel").show(ui, |ui| {
-            ui.heading("Queue");
-            let mut to_remove: Option<usize> = None;
-            egui::ScrollArea::vertical().show(ui, |ui| {
-                for (i, path) in self.queue.iter().enumerate() {
-                    ui.horizontal(|ui| {
-                        if ui.button("x").clicked() {
-                            to_remove = Some(i);
-                        }
-                        if let Some(name) = path.file_name() {
-                            ui.label(name.to_string_lossy());
-                        }
-                    });
+        if self.show_queue || self.show_history {
+            egui::Panel::right("side_panel").show(ui, |ui| {
+                if self.show_history {
+                    ui.heading("History");
+
+                    let h = if self.show_queue {
+                        ui.available_height() / 2.0
+                    } else {
+                        ui.available_height()
+                    };
+
+                    egui::ScrollArea::vertical()
+                        .id_salt("history_scroll")
+                        .max_height(h)
+                        .show(ui, |ui| {
+                            for path in self.history.iter().rev() {
+                                if let Some(name) = path.file_name() {
+                                    ui.label(name.to_string_lossy());
+                                    ui.separator();
+                                }
+                            }
+                        });
+                    ui.separator(); // a thin line between the two sections
+                }
+                if self.show_queue {
+                    ui.heading("Queue");
+                    let mut to_remove: Option<usize> = None;
+                    egui::ScrollArea::vertical()
+                        .id_salt("queue_scroll")
+                        .show(ui, |ui| {
+                            for (i, path) in self.queue.iter().enumerate() {
+                                ui.horizontal(|ui| {
+                                    if ui.button("x").clicked() {
+                                        to_remove = Some(i);
+                                    }
+                                    if let Some(name) = path.file_name() {
+                                        ui.label(name.to_string_lossy());
+                                    }
+                                });
+                                ui.separator();
+                            }
+                        });
+                    if let Some(i) = to_remove {
+                        self.queue.remove(i);
+                    }
                 }
             });
-            if let Some(i) = to_remove {
-                self.queue.remove(i);
-            }
-        });
+        }
 
         egui::Panel::bottom("controls").show(ui, |ui| {
             // "playing" is true only if a song is loaded and it is not paused
