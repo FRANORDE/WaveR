@@ -32,6 +32,9 @@ struct WaveR {
     total: Option<Duration>, // total duration of the song, None if unknown
     drag_pos: Option<f32>, // position chosen while dragging the bar (None = not dragging)
     queue: Vec<PathBuf>,   // position to where the song is saved
+    current_path: Option<PathBuf>, // None when nothing has been played yet
+    history: Vec<PathBuf>, // the last element is the most recent song
+    show_about: bool,
 }
 
 impl WaveR {
@@ -51,6 +54,9 @@ impl WaveR {
             total: None,
             drag_pos: None,
             queue: Vec::new(),
+            current_path: None,
+            history: Vec::new(),
+            show_about: false,
         }
     }
 
@@ -67,6 +73,11 @@ impl WaveR {
             Err(_) => return,
         };
 
+        if let Some(old) = self.current_path.take() {
+            self.history.push(old);
+        }
+        self.current_path = Some(path.to_path_buf());
+
         self.sink.clear(); // empty the queue so the new song can play
         self.total = source.total_duration(); // save the duration (must be before append, which moves source)
         self.sink.append(source); // add the song to the queue
@@ -75,6 +86,55 @@ impl WaveR {
         // save the file name to show it in the UI
         self.current_track = path.file_name().map(|n| n.to_string_lossy().to_string());
     }
+
+    fn open_file(&mut self) {
+        if let Some(path) = rfd::FileDialog::new()
+            .add_filter("Audio files", &["mp3", "flac", "wav", "ogg"])
+            .pick_file()
+        {
+            self.play_file(&path);
+        }
+    }
+    fn add_folder(&mut self) {
+        if let Some(folder) = rfd::FileDialog::new().pick_folder() {
+            self.queue.extend(collect_songs(&folder)); // add all the songs found
+        }
+    }
+    fn add_to_queue(&mut self) {
+        if let Some(files) = rfd::FileDialog::new()
+            .add_filter("Audio files", &["mp3", "flac", "wav", "ogg"]) // only show these formats
+            .pick_files()
+        // opens the file window, gives Some(path) or None if cancelled
+        {
+            self.queue.extend(files);
+        }
+    }
+    fn toggle_playback(&mut self) {
+        if self.sink.is_paused() {
+            self.sink.play();
+        } else {
+            self.sink.pause();
+        }
+    }
+    fn remove_all_queue(&mut self) {
+        self.queue.clear(); // clears the queue
+    }
+    fn next_track(&mut self) {
+        self.sink.clear(); // stops the current song so the next can play
+    }
+    fn previous_track(&mut self) {
+        if self.sink.get_pos() > Duration::from_secs(3) {
+            let _ = self.sink.try_seek(Duration::ZERO);
+            return;
+        }
+
+        if let Some(prev) = self.history.pop() {
+            if let Some(cur) = self.current_path.take() {
+                self.queue.insert(0, cur);
+            }
+            self.play_file(&prev);
+        }
+    }
 }
 
 // This is the UI part. eframe calls ui() again and again, many times per second.
@@ -82,12 +142,82 @@ impl WaveR {
 impl eframe::App for WaveR {
     // ^ eframe::App is a trait, a contract: "to be an eframe app you must have a ui() function"
     // 'for WaveR' means "WaveR follows this contract"
+
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         // ^ &mut self = our app data, ui = the "brush" we use to draw widgets
         if self.sink.empty() && !self.queue.is_empty() {
             let next = self.queue.remove(0); // take the first song out of the queue
             self.play_file(&next); // play it
         }
+
+        if ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Space)) {
+            self.toggle_playback();
+        }
+
+        egui::Panel::top("menu_bar").show(ui, |ui| {
+            egui::MenuBar::new().ui(ui, |ui| {
+                ui.menu_button("File", |ui| {
+                    if ui.button("Open file").clicked() {
+                        self.open_file();
+                        ui.close(); // closes the menu after the click
+                    }
+                    if ui.button("Add folder").clicked() {
+                        self.add_folder();
+                        ui.close();
+                    }
+                    if ui.button("Add to queue").clicked() {
+                        self.add_to_queue();
+                        ui.close();
+                    }
+                    ui.separator();
+                    if ui.button("Quit").clicked() {
+                        ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
+                    }
+                });
+                ui.menu_button("Controls", |ui| {
+                    if ui
+                        .add(egui::Button::new("Play/pause").shortcut_text("Space"))
+                        .clicked()
+                    {
+                        self.toggle_playback();
+                        ui.close();
+                    }
+                    if ui.button("Previous").clicked() {
+                        self.previous_track();
+                        ui.close();
+                    }
+                    if ui.button("Next").clicked() {
+                        self.next_track();
+                        ui.close();
+                    }
+                });
+                ui.menu_button("Queue", |ui| {
+                    if ui.button("Remove all").clicked() {
+                        self.remove_all_queue();
+                        ui.close();
+                    }
+                });
+                ui.menu_button("Help", |ui| {
+                    if ui.button("About").clicked() {
+                        self.show_about = true;
+                        ui.close();
+                    }
+                });
+            });
+        });
+
+        egui::Window::new("About WaveR")
+            .open(&mut self.show_about)
+            .collapsible(false)
+            .resizable(false)
+            .show(ui.ctx(), |ui| {
+                ui.heading("WaveR");
+                ui.label(format!("Version {}", env!("CARGO_PKG_VERSION")));
+                ui.label("A simple, cozy local music player.");
+                if ui.link("https://github.com/FRANORDE/WaveR").clicked() {
+                    let _ = webbrowser::open("https://github.com/FRANORDE/WaveR");
+                }
+            });
 
         egui::Panel::right("queue_panel").show(ui, |ui| {
             ui.heading("Queue");
@@ -110,18 +240,20 @@ impl eframe::App for WaveR {
         });
 
         egui::Panel::bottom("controls").show(ui, |ui| {
-            // vertical_centered centers everything inside it horizontally, like Spotify
-            ui.vertical_centered(|ui| {
-                // "playing" is true only if a song is loaded and it is not paused
-                let playing = !self.sink.is_paused() && !self.sink.empty();
+            // "playing" is true only if a song is loaded and it is not paused
+            let playing = !self.sink.is_paused() && !self.sink.empty();
+            ui.horizontal(|ui| {
+                let total = 28.0 + 40.0 + 28.0 + ui.spacing().item_spacing.x;
+                ui.add_space(((ui.available_width() - total) / 2.0).max(0.0));
 
-                // round_button returns a Response, so .clicked() works like with ui.button()
+                if skip_button(ui, false).clicked() {
+                    self.previous_track();
+                }
                 if round_button(ui, playing).clicked() {
-                    if self.sink.is_paused() {
-                        self.sink.play(); // it was paused: resume
-                    } else {
-                        self.sink.pause(); // it was playing: pause
-                    }
+                    self.toggle_playback();
+                }
+                if skip_button(ui, true).clicked() {
+                    self.next_track();
                 }
             });
 
@@ -134,7 +266,7 @@ impl eframe::App for WaveR {
 
                 ui.horizontal(|ui| {
                     // ^ the three widgets (current time, bar, total time) go side by side
-                    ui.spacing_mut().slider_width = ui.available_width() - 100.0; // width of the duration line
+                    ui.spacing_mut().slider_width = (ui.available_width() - 100.0).max(50.0); // width of the duration line
 
                     ui.label(format_time(position));
 
@@ -276,6 +408,38 @@ fn round_button(ui: &mut egui::Ui, playing: bool) -> egui::Response {
     ));
 
     response.on_hover_cursor(egui::CursorIcon::PointingHand) // hand cursor on hover
+}
+
+fn skip_button(ui: &mut egui::Ui, forward: bool) -> egui::Response {
+    let size = egui::vec2(28.0, 28.0); // smaller than the play button (40x40)
+    let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click());
+    let c = rect.center();
+
+    let color = if response.hovered() {
+        egui::Color32::WHITE
+    } else {
+        egui::Color32::from_gray(170)
+    };
+
+    let dir = if forward { 1.0 } else { -1.0 };
+
+    let points = vec![
+        c + egui::vec2(-7.0 * dir, -7.0), // top
+        c + egui::vec2(-7.0 * dir, 7.0),  // bottom
+        c + egui::vec2(4.0 * dir, 0.0),   // tip
+    ];
+    ui.painter().add(egui::Shape::convex_polygon(
+        points,
+        color,
+        egui::Stroke::NONE,
+    ));
+
+    ui.painter().rect_filled(
+        egui::Rect::from_center_size(c + egui::vec2(7.0 * dir, 0.0), egui::vec2(3.0, 14.0)),
+        1.0, // corner radius
+        color,
+    );
+    response.on_hover_cursor(egui::CursorIcon::PointingHand)
 }
 
 fn load_icon() -> egui::IconData {
