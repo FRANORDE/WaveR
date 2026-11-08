@@ -42,6 +42,7 @@ struct WaveR {
     show_about: bool,
     show_queue: bool,
     show_history: bool,
+    shuffle: bool,
 }
 
 impl WaveR {
@@ -66,6 +67,7 @@ impl WaveR {
             show_about: false,
             show_queue: true,
             show_history: false,
+            shuffle: false,
         }
     }
 
@@ -144,6 +146,18 @@ impl WaveR {
             self.play_file(&prev);
         }
     }
+    fn next_index(&self) -> usize {
+        if self.shuffle {
+            // the nanoseconds of the clock change all the time: good enough for a shuffle
+            let nanos = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.subsec_nanos())
+                .unwrap_or(0); // if the clock is broken, use 0
+            nanos as usize % self.queue.len() // % gives a number from 0 to len - 1
+        } else {
+            0 // no shuffle: always the first one
+        }
+    }
 }
 
 // This is the UI part. eframe calls ui() again and again, many times per second.
@@ -155,7 +169,8 @@ impl eframe::App for WaveR {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         // ^ &mut self = our app data, ui = the "brush" we use to draw widgets
         if self.sink.empty() && !self.queue.is_empty() {
-            let next = self.queue.remove(0); // take the first song out of the queue
+            let i = self.next_index();
+            let next = self.queue.remove(i); // take the first song out of the queue
             self.play_file(&next); // play it
         }
 
@@ -199,6 +214,8 @@ impl eframe::App for WaveR {
                         self.next_track();
                         ui.close();
                     }
+                    ui.separator();
+                    ui.checkbox(&mut self.shuffle, "Shuffle")
                 });
                 ui.menu_button("Queue", |ui| {
                     if ui.button("Add to queue").clicked() {
@@ -241,6 +258,7 @@ impl eframe::App for WaveR {
 
         if self.show_queue || self.show_history {
             egui::Panel::right("side_panels").show(ui, |ui| {
+                ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Truncate);
                 if self.show_history {
                     let mut to_play_history: Option<PathBuf> = None;
                     ui.heading("History");
@@ -313,9 +331,15 @@ impl eframe::App for WaveR {
         egui::Panel::bottom("controls").show(ui, |ui| {
             // "playing" is true only if a song is loaded and it is not paused
             let playing = !self.sink.is_paused() && !self.sink.empty();
+            ui.vertical_centered(|ui| {
+                ui.add(
+                    egui::Label::new(self.current_track.as_deref().unwrap_or("Nothing playing"))
+                        .truncate(),
+                );
+            });
             ui.horizontal(|ui| {
                 ui.set_min_height(40.0);
-                let total = 28.0 + 40.0 + 28.0 + ui.spacing().item_spacing.x;
+                let total = 28.0 + 40.0 + 28.0 + 2.0 * ui.spacing().item_spacing.x;
                 ui.add_space(((ui.available_width() - total) / 2.0).max(0.0));
 
                 if skip_button(ui, false).clicked() {
@@ -380,11 +404,6 @@ impl eframe::App for WaveR {
 
         egui::CentralPanel::default().show(ui, |ui| {
             // ^ a panel that fills the whole window. The closure |ui| is the content inside it
-
-            ui.label(format!("Queue: {} songs", self.queue.len()));
-
-            // show the song name, or "Nothing playing" if there is None
-            ui.label(self.current_track.as_deref().unwrap_or("Nothing playing"));
 
             // egui only redraws when something happens, so we ask for a redraw every 200 ms
             // this keeps the progress bar moving by itself
