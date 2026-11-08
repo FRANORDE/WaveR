@@ -232,8 +232,9 @@ impl eframe::App for WaveR {
             });
 
         if self.show_queue || self.show_history {
-            egui::Panel::right("side_panel").show(ui, |ui| {
+            egui::Panel::right("side_panels").show(ui, |ui| {
                 if self.show_history {
+                    let mut to_play_history: Option<PathBuf> = None;
                     ui.heading("History");
 
                     let h = if self.show_queue {
@@ -248,16 +249,26 @@ impl eframe::App for WaveR {
                         .show(ui, |ui| {
                             for path in self.history.iter().rev() {
                                 if let Some(name) = path.file_name() {
-                                    ui.label(name.to_string_lossy());
+                                    let r = ui.add(
+                                        egui::Label::new(name.to_string_lossy().to_string())
+                                            .sense(egui::Sense::click()),
+                                    );
                                     ui.separator();
+                                    if r.clicked() {
+                                        to_play_history = Some(path.clone());
+                                    }
                                 }
                             }
                         });
+                    if let Some(p) = to_play_history {
+                        self.play_file(&p);
+                    }
                     ui.separator(); // a thin line between the two sections
                 }
                 if self.show_queue {
                     ui.heading("Queue");
                     let mut to_remove: Option<usize> = None;
+                    let mut to_play: Option<usize> = None;
                     egui::ScrollArea::vertical()
                         .id_salt("queue_scroll")
                         .show(ui, |ui| {
@@ -267,7 +278,14 @@ impl eframe::App for WaveR {
                                         to_remove = Some(i);
                                     }
                                     if let Some(name) = path.file_name() {
-                                        ui.label(name.to_string_lossy());
+                                        let r = ui.add(
+                                            egui::Label::new(name.to_string_lossy().to_string())
+                                                .sense(egui::Sense::click()),
+                                        );
+                                        if r.clicked() {
+                                            to_play = Some(i);
+                                        }
+                                        r.on_hover_cursor(egui::CursorIcon::PointingHand); // hand cursor on hover
                                     }
                                 });
                                 ui.separator();
@@ -275,6 +293,10 @@ impl eframe::App for WaveR {
                         });
                     if let Some(i) = to_remove {
                         self.queue.remove(i);
+                    }
+                    if let Some(i) = to_play {
+                        let path = self.queue.remove(i); // remove() gives back the removed element
+                        self.play_file(&path);
                     }
                 }
             });
@@ -349,35 +371,6 @@ impl eframe::App for WaveR {
 
         egui::CentralPanel::default().show(ui, |ui| {
             // ^ a panel that fills the whole window. The closure |ui| is the content inside it
-            ui.heading("WaveR"); // big title text
-
-            if ui.button("Open file").clicked() {
-                // ^ draws the button, clicked() is true only in the frame where it is pressed
-                if let Some(path) = rfd::FileDialog::new()
-                    .add_filter("Audio files", &["mp3", "flac", "wav", "ogg"]) // only show these formats
-                    .pick_file()
-                // opens the file window, gives Some(path) or None if cancelled
-                {
-                    self.play_file(&path);
-                }
-            }
-
-            if ui.button("Add to queue").clicked() {
-                // ^ draws the button, clicked() is true only in the frame where it is pressed
-                if let Some(files) = rfd::FileDialog::new()
-                    .add_filter("Audio files", &["mp3", "flac", "wav", "ogg"]) // only show these formats
-                    .pick_files()
-                // opens the file window, gives Some(path) or None if cancelled
-                {
-                    self.queue.extend(files);
-                }
-            }
-            if ui.button("Add folder").clicked() {
-                // pick_folder() gives Some(path) if the user chooses a folder, None if cancelled
-                if let Some(folder) = rfd::FileDialog::new().pick_folder() {
-                    self.queue.extend(collect_songs(&folder)); // add all the songs found
-                }
-            }
 
             ui.label(format!("Queue: {} songs", self.queue.len()));
 
