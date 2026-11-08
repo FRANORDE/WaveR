@@ -1,6 +1,6 @@
 #define AppName "WaveR"
 ; I need to remember to change this version before every release :[
-#define AppVersion "1.0.0"
+#define AppVersion "1.1.2"
 
 [Setup]
 ; forces the dark appearance, whatever the Windows theme is
