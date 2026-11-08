@@ -170,10 +170,6 @@ impl eframe::App for WaveR {
                         self.add_folder();
                         ui.close();
                     }
-                    if ui.button("Add to queue").clicked() {
-                        self.add_to_queue();
-                        ui.close();
-                    }
                     ui.separator();
                     if ui.button("Quit").clicked() {
                         ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
@@ -197,6 +193,10 @@ impl eframe::App for WaveR {
                     }
                 });
                 ui.menu_button("Queue", |ui| {
+                    if ui.button("Add to queue").clicked() {
+                        self.add_to_queue();
+                        ui.close();
+                    }
                     if ui.button("Remove all").clicked() {
                         self.remove_all_queue();
                         ui.close();
