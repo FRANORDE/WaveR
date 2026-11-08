@@ -29,6 +29,13 @@ fn main() -> eframe::Result {
     )
 }
 
+#[derive(Clone, Copy, PartialEq)]
+enum RepeatMode {
+    Off,
+    One,
+    All,
+}
+
 struct WaveR {
     // ^ a struct is a collection of data, like a class in other languages
     _stream: OutputStream, // connection to the audio device, must stay alive or the sound stops
@@ -43,6 +50,7 @@ struct WaveR {
     show_queue: bool,
     show_history: bool,
     shuffle: bool,
+    repeat: RepeatMode,
 }
 
 impl WaveR {
@@ -68,6 +76,7 @@ impl WaveR {
             show_queue: true,
             show_history: false,
             shuffle: false,
+            repeat: RepeatMode::Off,
         }
     }
 
@@ -158,6 +167,21 @@ impl WaveR {
             0 // no shuffle: always the first one
         }
     }
+    fn play_next(&mut self) {
+        // queue finished and repeat all is on: put everything back in the queue, in the original order
+        if self.queue.is_empty() && self.repeat == RepeatMode::All {
+            let mut all = std::mem::take(&mut self.history); // takes the whole list and leaves it empty
+            all.extend(self.current_path.take()); // then adds the current song at the end
+            self.queue = all;
+        }
+        if !self.queue.is_empty() {
+            let i = self.next_index(); // your shuffle method
+            let next = self.queue.remove(i);
+            self.play_file(&next);
+        } else {
+            self.sink.clear(); // nothing left: stop
+        }
+    }
 }
 
 // This is the UI part. eframe calls ui() again and again, many times per second.
@@ -168,12 +192,19 @@ impl eframe::App for WaveR {
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         // ^ &mut self = our app data, ui = the "brush" we use to draw widgets
-        if self.sink.empty() && !self.queue.is_empty() {
-            let i = self.next_index();
-            let next = self.queue.remove(i); // take the first song out of the queue
-            self.play_file(&next); // play it
-        }
 
+        if self.sink.empty() {
+            if self.repeat == RepeatMode::One {
+                // take() empties current_path first, so play_file doesn't push the same song into the history
+                if let Some(path) = self.current_path.take() {
+                    self.play_file(&path);
+                }
+            } else if !self.queue.is_empty()
+                || (self.repeat == RepeatMode::All && self.current_path.is_some())
+            {
+                self.play_next();
+            }
+        }
         if ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Space)) {
             self.toggle_playback();
         }
@@ -215,7 +246,12 @@ impl eframe::App for WaveR {
                         ui.close();
                     }
                     ui.separator();
-                    ui.checkbox(&mut self.shuffle, "Shuffle")
+                    ui.checkbox(&mut self.shuffle, "Shuffle");
+                    ui.menu_button("Repeat", |ui| {
+                        ui.radio_value(&mut self.repeat, RepeatMode::Off, "Off");
+                        ui.radio_value(&mut self.repeat, RepeatMode::One, "Repeat one");
+                        ui.radio_value(&mut self.repeat, RepeatMode::All, "Repeat all");
+                    });
                 });
                 ui.menu_button("Queue", |ui| {
                     if ui.button("Add to queue").clicked() {
