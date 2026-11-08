@@ -20,8 +20,12 @@ fn main() -> eframe::Result {
 
     eframe::run_native(
         "WaveR",
-        options, // TODO: use your `options` here instead of eframe::NativeOptions::default()
-        Box::new(|_cc| Ok(Box::new(WaveR::new()))),
+        options,
+        Box::new(|cc| {
+            cc.egui_ctx
+                .global_style_mut(|style| style.interaction.selectable_labels = false);
+            Ok(Box::new(WaveR::new()))
+        }),
     )
 }
 
@@ -166,6 +170,10 @@ impl eframe::App for WaveR {
                         self.open_file();
                         ui.close(); // closes the menu after the click
                     }
+                    if ui.button("Add to queue").clicked() {
+                        self.add_to_queue();
+                        ui.close();
+                    }
                     if ui.button("Add folder").clicked() {
                         self.add_folder();
                         ui.close();
@@ -306,6 +314,7 @@ impl eframe::App for WaveR {
             // "playing" is true only if a song is loaded and it is not paused
             let playing = !self.sink.is_paused() && !self.sink.empty();
             ui.horizontal(|ui| {
+                ui.set_min_height(40.0);
                 let total = 28.0 + 40.0 + 28.0 + ui.spacing().item_spacing.x;
                 ui.add_space(((ui.available_width() - total) / 2.0).max(0.0));
 
