@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="../pjassets/WaveR.png" width="200" alt="WaveR Logo">
+  <img src="../../pjassets/WaveR.png" width="200" alt="WaveR Logo">
 </p>
 
 <h1 align="center">WaveR</h1>
@@ -75,7 +75,7 @@ Apri WaveR dal Menu Start o dal collegamento sul desktop (se creato).
 Quindi seleziona `Apri file` o `Aggiungi cartella` e seleziona il tuo brano o la tua cartella.
 
 <p>
-  <img src="../pjassets/WaveRphoto.png" width="500" style="max-width:100%;" alt="WaveR Photo">
+  <img src="../../pjassets/WaveRphoto.png" width="500" style="max-width:100%;" alt="WaveR Photo">
 </p>
 
 # Compilazione dal codice sorgente

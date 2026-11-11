@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="../../pjassets/WaveR.png" width="200" alt="WaveR Logo">
+  <img src="../pjassets/WaveR.png" width="200" alt="WaveR Logo">
 </p>
 
 <h1 align="center">WaveR</h1>
@@ -14,7 +14,7 @@
 </p>
 
 ### Other translations
-[Italiano](lang/README-it.md)
+[Italiano](lang/README-it.)
 
 # Features
 
@@ -77,7 +77,7 @@ Open WaveR from the Start Menu or your desktop shortcut (if created).
 Then select `Open file` or `Add folder` and select your song/folder.
 
 <p>
-  <img src="../../pjassets/WaveRphoto.png" width="500" style="max-width:100%;" alt="WaveR Photo">
+  <img src="../pjassets/WaveRphoto.png" width="500" style="max-width:100%;" alt="WaveR Photo">
 </p>
 
 # Building from source
