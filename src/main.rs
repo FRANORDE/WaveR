@@ -328,7 +328,7 @@ impl eframe::App for WaveR {
                         self.strings = Rc::new(strings_for(self.language));
                     }
                     if ui
-                        .radio_value(&mut self.language, Language::English, "Italiano")
+                        .radio_value(&mut self.language, Language::Italian, "Italiano")
                         .changed()
                     {
                         self.strings = Rc::new(strings_for(self.language));
