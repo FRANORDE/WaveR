@@ -1,0 +1,15 @@
+name: Linux test
+
+on:
+  workflow_dispatch:   # lets you start it by hand from the GitHub page
+
+jobs:
+  linux:                       # the name of the job (you choose it)
+    runs-on: ubuntu-latest     # a Linux machine instead of Windows
+    steps:
+      - uses: actions/checkout@v7      # downloads your code
+      - uses: Swatinem/rust-cache@v2   # same cache you already use
+      - name: Install audio library
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev
+      - name: Compile release
+        run: cargo build --release --locked
