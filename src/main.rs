@@ -6,8 +6,49 @@
 // so, this ones below help you write less code, and make it more readable
 use eframe::{NativeOptions, egui};
 use rodio::{Decoder, OutputStream, OutputStreamBuilder, Sink, Source};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 use std::time::Duration;
+
+// translations embedded in the exe at compile time
+const IT: &str = include_str!("../assets/lang/it.txt");
+
+#[derive(Clone, Copy, PartialEq)]
+enum Language {
+    English,
+    Italian,
+}
+
+fn load_language(source: &'static str) -> HashMap<&'static str, &'static str> {
+    let mut map = HashMap::new(); // starts empty, we fill it line by line
+
+    for line in source.lines() {
+        // skip empty lines and comments (lines starting with #)
+        if line.trim().is_empty() || line.starts_with('#') {
+            continue; // go straight to the next line
+        }
+
+        // split at the FIRST " = ": left side is the English key, right side the translation
+        // split_once returns None if the line has no " = ", so bad lines are just ignored
+        if let Some((key, value)) = line.split_once(" = ") {
+            map.insert(key.trim(), value.trim());
+        }
+    }
+
+    map // last expression without `;` = the returned value
+}
+fn strings_for(lang: Language) -> HashMap<&'static str, &'static str> {
+    match lang {
+        Language::English => HashMap::new(),
+        Language::Italian => load_language(IT),
+    }
+}
+// translation helper: free function, same level as skip_button()
+fn tr(map: &HashMap<&'static str, &'static str>, key: &'static str) -> &'static str {
+    // if the translation is missing, show the English key itself
+    map.get(key).copied().unwrap_or(key)
+}
 
 fn main() -> eframe::Result {
     // ^ main returns a Result, which can be Ok or Err
@@ -52,6 +93,8 @@ struct WaveR {
     repeat: RepeatMode,
     show_shuffle_button: bool,
     show_loop_button: bool,
+    language: Language,
+    strings: Rc<HashMap<&'static str, &'static str>>, // the active translations
 }
 
 impl WaveR {
@@ -80,6 +123,8 @@ impl WaveR {
             repeat: RepeatMode::Off,
             show_shuffle_button: true,
             show_loop_button: true,
+            language: Language::English,
+            strings: Rc::new(strings_for(Language::English)),
         }
     }
 
@@ -186,7 +231,6 @@ impl WaveR {
         }
     }
 }
-
 // This is the UI part. eframe calls ui() again and again, many times per second.
 // egui is "immediate mode": every frame we describe the whole UI from zero
 impl eframe::App for WaveR {
@@ -195,6 +239,8 @@ impl eframe::App for WaveR {
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         // ^ &mut self = our app data, ui = the "brush" we use to draw widgets
+
+        let strings = self.strings.clone(); // copies only the pointer, not the whole map
 
         if self.sink.empty() {
             if self.repeat == RepeatMode::One {
@@ -232,7 +278,7 @@ impl eframe::App for WaveR {
                         ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
                     }
                 });
-                ui.menu_button("Controls", |ui| {
+                ui.menu_button(tr(&strings, "Controls"), |ui| {
                     if ui
                         .add(egui::Button::new("Play/pause").shortcut_text("Space"))
                         .clicked()
@@ -256,7 +302,7 @@ impl eframe::App for WaveR {
                         ui.radio_value(&mut self.repeat, RepeatMode::All, "Repeat all");
                     });
                 });
-                ui.menu_button("Queue", |ui| {
+                ui.menu_button(tr(&strings, "Queue"), |ui| {
                     if ui.button("Add to queue").clicked() {
                         self.add_to_queue();
                         ui.close();
@@ -273,6 +319,20 @@ impl eframe::App for WaveR {
                         ui.checkbox(&mut self.show_queue, "Queue");
                         ui.checkbox(&mut self.show_history, "History");
                     });
+                });
+                ui.menu_button("Language", |ui| {
+                    if ui
+                        .radio_value(&mut self.language, Language::English, "English")
+                        .changed()
+                    {
+                        self.strings = Rc::new(strings_for(self.language));
+                    }
+                    if ui
+                        .radio_value(&mut self.language, Language::English, "Italiano")
+                        .changed()
+                    {
+                        self.strings = Rc::new(strings_for(self.language));
+                    }
                 });
                 ui.menu_button("Help", |ui| {
                     if ui.button("About").clicked() {
@@ -376,10 +436,15 @@ impl eframe::App for WaveR {
             let playing = !self.sink.is_paused() && !self.sink.empty();
             ui.vertical_centered(|ui| {
                 ui.add(
-                    egui::Label::new(self.current_track.as_deref().unwrap_or("Nothing playing"))
-                        .truncate(),
+                    egui::Label::new(
+                        self.current_track
+                            .as_deref()
+                            .unwrap_or(tr(&strings, "Nothing playing")),
+                    )
+                    .truncate(),
                 );
             });
+
             ui.horizontal(|ui| {
                 ui.set_min_height(40.0);
 
