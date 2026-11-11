@@ -8,7 +8,11 @@ jobs:
     runs-on: ubuntu-latest     # a Linux machine instead of Windows
     steps:
       - uses: actions/checkout@v7      # downloads your code
-      - uses: Swatinem/rust-cache@v2   # same cache you already use
+      - uses: Swatinem/rust-cache@v2
+      - name: Install ALSA headers
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --fix-missing libasound2-dev
       - name: Install audio library
         run: sudo apt-get update && sudo apt-get install -y libasound2-dev
       - name: Compile release
