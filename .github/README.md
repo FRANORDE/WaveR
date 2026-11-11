@@ -14,7 +14,7 @@
 </p>
 
 ### Other translations
-[Italiano](lang/README-it.)
+[Italiano](lang/README-it)
 
 # Features
 
