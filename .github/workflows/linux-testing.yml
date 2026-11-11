@@ -1,19 +1,18 @@
 name: Linux test
 
 on:
-  workflow_dispatch:   # lets you start it by hand from the GitHub page
+  workflow_dispatch:
 
 jobs:
-  linux:                       # the name of the job (you choose it)
-    runs-on: ubuntu-latest     # a Linux machine instead of Windows
+  linux:
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7      # downloads your code
+      - uses: actions/checkout@v7
       - uses: Swatinem/rust-cache@v2
       - name: Install ALSA headers
         run: |
+          echo "https://mirrors.edge.kernel.org/ubuntu" | sudo tee /etc/apt/apt-mirrors.txt
           sudo apt-get update
-          sudo apt-get install -y --fix-missing libasound2-dev
-      - name: Install audio library
-        run: sudo apt-get update && sudo apt-get install -y libasound2-dev
+          sudo apt-get install -y libasound2-dev
       - name: Compile release
         run: cargo build --release --locked
