@@ -12,7 +12,7 @@
   <picture><source media="(prefers-color-scheme: dark)" srcset="https://www.shieldcn.dev/github/license/FRANORDE/WaveR.svg?variant=ghost&amp;size=sm&amp;mode=dark&amp;font=jetbrains-mono"><img alt="License" src="https://www.shieldcn.dev/github/license/FRANORDE/WaveR.svg?variant=ghost&amp;size=sm&amp;mode=light&amp;font=jetbrains-mono"></picture>
   <picture><source media="(prefers-color-scheme: dark)" srcset="https://www.shieldcn.dev/github/commits/FRANORDE/WaveR.svg?variant=secondary&amp;size=sm&amp;mode=dark&amp;font=jetbrains-mono"><img alt="Commits" src="https://www.shieldcn.dev/github/commits/FRANORDE/WaveR.svg?variant=secondary&amp;size=sm&amp;mode=light&amp;font=jetbrains-mono"></picture>
 </p>
-<p align="center"><sub>Translations are also available for <a href="/your-username/your-repo/blob/main/lang/README-it.md">Italiano</a></sub></p>   
+<p align="center"><sub>Translations are also available for <a href="/FRANORDE/WaveR/blob/main/lang/README-it.md">Italiano</a></sub></p>   
 
 # Features
 
