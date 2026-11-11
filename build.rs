@@ -1,5 +1,5 @@
 // Embeds the icon (and version info taken from Cargo.toml) into the .exe
-#[cfg(not(target_os = "linux"))]
+#[cfg(windows)]
 fn main() {
     // Re-run this script whenever the icon changes
     println!("cargo:rerun-if-changed=assets/WaveR.ico");
@@ -12,5 +12,5 @@ fn main() {
     }
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(not(windows))]
 fn main() {}
