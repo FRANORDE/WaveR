@@ -261,66 +261,77 @@ impl eframe::App for WaveR {
         egui::Panel::top("menu_bar").show(ui, |ui| {
             egui::MenuBar::new().ui(ui, |ui| {
                 ui.menu_button("File", |ui| {
-                    if ui.button("Open file").clicked() {
+                    if ui.button(tr(&strings, "Open file")).clicked() {
                         self.open_file();
                         ui.close(); // closes the menu after the click
                     }
-                    if ui.button("Add to queue").clicked() {
+                    if ui.button(tr(&strings, "Add to queue")).clicked() {
                         self.add_to_queue();
                         ui.close();
                     }
-                    if ui.button("Add folder").clicked() {
+                    if ui.button(tr(&strings, "Add folder")).clicked() {
                         self.add_folder();
                         ui.close();
                     }
                     ui.separator();
-                    if ui.button("Quit").clicked() {
+                    if ui.button(tr(&strings, "Quit")).clicked() {
                         ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
                     }
                 });
                 ui.menu_button(tr(&strings, "Controls"), |ui| {
                     if ui
-                        .add(egui::Button::new("Play/pause").shortcut_text("Space"))
+                        .add(egui::Button::new(tr(&strings, "Play/pause")).shortcut_text("Space"))
                         .clicked()
                     {
                         self.toggle_playback();
                         ui.close();
                     }
-                    if ui.button("Previous").clicked() {
+                    if ui.button(tr(&strings, "Previous")).clicked() {
                         self.previous_track();
                         ui.close();
                     }
-                    if ui.button("Next").clicked() {
+                    if ui.button(tr(&strings, "Next")).clicked() {
                         self.next_track();
                         ui.close();
                     }
                     ui.separator();
-                    ui.checkbox(&mut self.shuffle, "Shuffle");
-                    ui.menu_button("Repeat", |ui| {
+                    ui.checkbox(&mut self.shuffle, tr(&strings, "Shuffle"));
+                    ui.menu_button(tr(&strings, "Loop"), |ui| {
                         ui.radio_value(&mut self.repeat, RepeatMode::Off, "Off");
-                        ui.radio_value(&mut self.repeat, RepeatMode::One, "Repeat one");
-                        ui.radio_value(&mut self.repeat, RepeatMode::All, "Repeat all");
+                        ui.radio_value(
+                            &mut self.repeat,
+                            RepeatMode::One,
+                            tr(&strings, "Repeat one"),
+                        );
+                        ui.radio_value(
+                            &mut self.repeat,
+                            RepeatMode::All,
+                            tr(&strings, "Repeat all"),
+                        );
                     });
                 });
                 ui.menu_button(tr(&strings, "Queue"), |ui| {
-                    if ui.button("Add to queue").clicked() {
+                    if ui.button(tr(&strings, "Add to queue")).clicked() {
                         self.add_to_queue();
                         ui.close();
                     }
-                    if ui.button("Remove all").clicked() {
+                    if ui.button(tr(&strings, "Remove all")).clicked() {
                         self.remove_all_queue();
                         ui.close();
                     }
                 });
-                ui.menu_button("View", |ui| {
-                    ui.checkbox(&mut self.show_shuffle_button, "Shuffle button");
-                    ui.checkbox(&mut self.show_loop_button, "Loop button");
-                    ui.menu_button("Panels", |ui| {
-                        ui.checkbox(&mut self.show_queue, "Queue");
-                        ui.checkbox(&mut self.show_history, "History");
+                ui.menu_button(tr(&strings, "View"), |ui| {
+                    ui.checkbox(
+                        &mut self.show_shuffle_button,
+                        tr(&strings, "Shuffle button"),
+                    );
+                    ui.checkbox(&mut self.show_loop_button, tr(&strings, "Loop button"));
+                    ui.menu_button(tr(&strings, "Panels"), |ui| {
+                        ui.checkbox(&mut self.show_queue, tr(&strings, "Queue"));
+                        ui.checkbox(&mut self.show_history, tr(&strings, "History"));
                     });
                 });
-                ui.menu_button("Language", |ui| {
+                ui.menu_button(tr(&strings, "Language"), |ui| {
                     if ui
                         .radio_value(&mut self.language, Language::English, "English")
                         .changed()
@@ -334,26 +345,26 @@ impl eframe::App for WaveR {
                         self.strings = Rc::new(strings_for(self.language));
                     }
                 });
-                ui.menu_button("Help", |ui| {
-                    if ui.button("About").clicked() {
+                ui.menu_button(tr(&strings, "Help"), |ui| {
+                    if ui.button(tr(&strings, "About")).clicked() {
                         self.show_about = true;
                         ui.close();
                     }
-                    if ui.button("Open an issue").clicked() {
+                    if ui.button(tr(&strings, "Open an issue")).clicked() {
                         let _ = webbrowser::open("https://github.com/FRANORDE/WaveR/issues/new");
                     }
                 });
             });
         });
 
-        egui::Window::new("About WaveR")
+        egui::Window::new(tr(&strings, "About WaveR"))
             .open(&mut self.show_about)
             .collapsible(false)
             .resizable(false)
             .show(ui.ctx(), |ui| {
                 ui.heading("WaveR");
-                ui.label(format!("Version {}", env!("CARGO_PKG_VERSION")));
-                ui.label("A simple, cozy local music player.");
+                ui.label(tr(&strings, "Version {}").replace("{}", env!("CARGO_PKG_VERSION")));
+                ui.label(tr(&strings, "A simple, cozy local music player."));
                 if ui.link("https://github.com/FRANORDE/WaveR").clicked() {
                     let _ = webbrowser::open("https://github.com/FRANORDE/WaveR");
                 }
@@ -364,7 +375,7 @@ impl eframe::App for WaveR {
                 ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Truncate);
                 if self.show_history {
                     let mut to_play_history: Option<PathBuf> = None;
-                    ui.heading("History");
+                    ui.heading(tr(&strings, "History"));
 
                     let h = if self.show_queue {
                         ui.available_height() / 2.0
@@ -395,7 +406,7 @@ impl eframe::App for WaveR {
                     ui.separator(); // a thin line between the two sections
                 }
                 if self.show_queue {
-                    ui.heading("Queue");
+                    ui.heading(tr(&strings, "Queue"));
                     let mut to_remove: Option<usize> = None;
                     let mut to_play: Option<usize> = None;
                     egui::ScrollArea::vertical()
