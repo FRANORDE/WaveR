@@ -1,0 +1,3 @@
+Nothing playing = Niente in riproduzione
+Controls = Controlli
+Queue = Coda
