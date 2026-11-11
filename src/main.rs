@@ -5,7 +5,6 @@
 // imports bring code from other crates, so we can write less code
 // so, this ones below help you write less code, and make it more readable
 use eframe::{NativeOptions, egui};
-use egui::epaint::FontColorTransferFunction::Off;
 use rodio::{Decoder, OutputStream, OutputStreamBuilder, Sink, Source};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -51,6 +50,8 @@ struct WaveR {
     show_history: bool,
     shuffle: bool,
     repeat: RepeatMode,
+    show_shuffle_button: bool,
+    show_loop_button: bool,
 }
 
 impl WaveR {
@@ -77,6 +78,8 @@ impl WaveR {
             show_history: false,
             shuffle: false,
             repeat: RepeatMode::Off,
+            show_shuffle_button: true,
+            show_loop_button: true,
         }
     }
 
@@ -263,9 +266,13 @@ impl eframe::App for WaveR {
                         ui.close();
                     }
                 });
-                ui.menu_button("Panels", |ui| {
-                    ui.checkbox(&mut self.show_queue, "Queue");
-                    ui.checkbox(&mut self.show_history, "History");
+                ui.menu_button("View", |ui| {
+                    ui.checkbox(&mut self.show_shuffle_button, "Shuffle button");
+                    ui.checkbox(&mut self.show_loop_button, "Loop button");
+                    ui.menu_button("Panels", |ui| {
+                        ui.checkbox(&mut self.show_queue, "Queue");
+                        ui.checkbox(&mut self.show_history, "History");
+                    });
                 });
                 ui.menu_button("Help", |ui| {
                     if ui.button("About").clicked() {
@@ -375,9 +382,29 @@ impl eframe::App for WaveR {
             });
             ui.horizontal(|ui| {
                 ui.set_min_height(40.0);
-                let total = 28.0 + 40.0 + 28.0 + 2.0 * ui.spacing().item_spacing.x;
+
+                // --- 1) measure the row (before drawing anything) ---
+                let spacing = ui.spacing().item_spacing.x;
+                let mut buttons_width = 28.0 + 40.0 + 28.0; // `mut` because we add to it below
+                let mut count = 3;
+
+                if self.show_shuffle_button {
+                    buttons_width += 28.0;
+                    count += 1;
+                }
+                if self.show_loop_button {
+                    buttons_width += 28.0;
+                    count += 1;
+                }
+
+                // total = all the buttons + the gaps between them (one gap less than buttons)
+                let total = buttons_width + (count - 1) as f32 * spacing;
+                // --- 2) center the row ---
                 ui.add_space(((ui.available_width() - total) / 2.0).max(0.0));
 
+                if self.show_shuffle_button && shuffle_button(ui, self.shuffle).clicked() {
+                    self.shuffle = !self.shuffle; // flip true/false
+                }
                 if skip_button(ui, false).clicked() {
                     self.previous_track();
                 }
@@ -386,6 +413,14 @@ impl eframe::App for WaveR {
                 }
                 if skip_button(ui, true).clicked() {
                     self.next_track();
+                }
+                if self.show_loop_button && loop_button(ui, self.repeat).clicked() {
+                    // cycle Off -> All -> One -> Off
+                    self.repeat = match self.repeat {
+                        RepeatMode::Off => RepeatMode::All,
+                        RepeatMode::All => RepeatMode::One,
+                        RepeatMode::One => RepeatMode::Off,
+                    };
                 }
             });
 
@@ -537,6 +572,101 @@ fn skip_button(ui: &mut egui::Ui, forward: bool) -> egui::Response {
         1.0, // corner radius
         color,
     );
+    response.on_hover_cursor(egui::CursorIcon::PointingHand)
+}
+
+// draws a small triangle pointing right, with its tip at `tip`
+fn arrow_head(painter: &egui::Painter, tip: egui::Pos2, color: egui::Color32) {
+    let points = vec![
+        tip,                          // the tip
+        tip + egui::vec2(-5.0, -3.5), // back, upper corner
+        tip + egui::vec2(-5.0, 3.5),  // back, lower corner
+    ];
+    painter.add(egui::Shape::convex_polygon(
+        points,
+        color,
+        egui::Stroke::NONE,
+    ));
+}
+
+fn shuffle_button(ui: &mut egui::Ui, active: bool) -> egui::Response {
+    let (rect, response) = ui.allocate_exact_size(egui::vec2(28.0, 28.0), egui::Sense::click());
+    let c = rect.center();
+
+    // blue when active, white on hover, gray otherwise
+    let color = if active {
+        egui::Color32::from_rgb(90, 160, 255)
+    } else if response.hovered() {
+        egui::Color32::WHITE
+    } else {
+        egui::Color32::from_gray(170)
+    };
+
+    let stroke = egui::Stroke::new(2.0, color);
+    let painter = ui.painter();
+
+    // two lines that cross each other
+    painter.line_segment(
+        [c + egui::vec2(-9.0, -6.0), c + egui::vec2(6.0, 6.0)],
+        stroke,
+    );
+    painter.line_segment(
+        [c + egui::vec2(-9.0, 6.0), c + egui::vec2(6.0, -6.0)],
+        stroke,
+    );
+
+    // an arrowhead at the right end of each line
+    arrow_head(painter, c + egui::vec2(11.0, 6.0), color);
+    arrow_head(painter, c + egui::vec2(11.0, -6.0), color);
+
+    response.on_hover_cursor(egui::CursorIcon::PointingHand)
+}
+
+fn loop_button(ui: &mut egui::Ui, mode: RepeatMode) -> egui::Response {
+    let (rect, response) = ui.allocate_exact_size(egui::vec2(28.0, 28.0), egui::Sense::click());
+    let c = rect.center();
+
+    // the loop is "on" for both All and One
+    let active = mode != RepeatMode::Off;
+
+    let color = if active {
+        egui::Color32::from_rgb(90, 160, 255)
+    } else if response.hovered() {
+        egui::Color32::WHITE
+    } else {
+        egui::Color32::from_gray(170)
+    };
+
+    let painter = ui.painter();
+
+    // open path, clockwise, with a gap at the top right
+    // the cut corners look rounded at this size
+    let path = vec![
+        c + egui::vec2(8.0, -1.0), // start on the right side, below the gap
+        c + egui::vec2(8.0, 2.0),
+        c + egui::vec2(5.0, 5.0),
+        c + egui::vec2(-5.0, 5.0),
+        c + egui::vec2(-8.0, 2.0),
+        c + egui::vec2(-8.0, -2.0),
+        c + egui::vec2(-5.0, -5.0),
+        c + egui::vec2(2.0, -5.0), // end of the top line
+    ];
+    painter.add(egui::Shape::line(path, egui::Stroke::new(2.0, color)));
+
+    // arrowhead at the end of the top line, pointing into the gap
+    arrow_head(painter, c + egui::vec2(7.0, -5.0), color);
+
+    // a small "1" in the middle only for "repeat one"
+    if mode == RepeatMode::One {
+        painter.text(
+            c,
+            egui::Align2::CENTER_CENTER,
+            "1",
+            egui::FontId::proportional(9.0),
+            color,
+        );
+    }
+
     response.on_hover_cursor(egui::CursorIcon::PointingHand)
 }
 
