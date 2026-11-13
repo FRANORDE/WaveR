@@ -3,6 +3,8 @@ name = "WaveR"
 version = "1.2.1"
 edition = "2024"
 license = "MIT"
+description = "A simple, cozy local music player" # reword as you like
+authors = ["FRANORDE"]
 
 [dependencies]
 eframe = { version = "0.37", default-features = false, features = ["glow", "default_fonts", "x11", "wayland"] }
@@ -21,3 +23,18 @@ rfd = { version = "0.17.2", default-features = false, features = ["gtk3"] }
 
 [profile.release]
 strip = true # smaller exe, no real cost at compile time
+
+# Config read by `cargo packager` (crates.io: cargo-packager)
+[package.metadata.packager]
+product-name = "WaveR"
+identifier = "io.github.franorde.waver" # reverse-DNS id, used by .desktop and deb
+out-dir = "dist"                        # same folder the Windows pipeline uses
+icons = ["assets/WaveR.png"]
+category = "Music"                      # valid AppCategory; "AudioVideo" is NOT in the enum
+license-file = "LICENSE"
+
+[package.metadata.packager.deb]
+depends = ["libasound2", "libgtk-3-0"]
+
+[package.metadata.packager.pacman]
+depends = ["alsa-lib", "gtk3"]          # Arch package names for the same libs
