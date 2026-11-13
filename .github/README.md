@@ -29,6 +29,11 @@ You can remove songs from the queue using the `X` button next to them.
 In the bottom-right corner, you can find the volume bar.
 The volume slider only changes WaveR’s volume, not the system volume.
 
+### Language
+
+The interface is available in English and Italiano.
+You can switch it anytime from the **Language** menu in the top bar.
+
 # Installation
 
 ## Installer
@@ -69,6 +74,49 @@ scoop bucket rm franorde
 
 More info at [scoop-bucket](https://github.com/FRANORDE/scoop-bucket/tree/main#installation)
 
+## Linux
+
+WaveR runs on Linux too, starting from version 2.0.0.
+
+### Debian / Ubuntu
+
+Download `WaveR_<version>_amd64.deb` from the [releases page](https://github.com/FRANORDE/WaveR/releases/latest) and install it:
+
+```
+sudo apt install ./WaveR_<version>_amd64.deb
+```
+
+The `.deb` pulls in its runtime dependencies (ALSA, GTK 3) by itself.
+
+### AppImage
+
+Download `WaveR_<version>_x86_64.AppImage` from the [releases page](https://github.com/FRANORDE/WaveR/releases/latest), make it executable and run it:
+
+```
+chmod +x WaveR_<version>_x86_64.AppImage
+./WaveR_<version>_x86_64.AppImage
+```
+
+> If your distro lacks FUSE, run it with `--appimage-extract-and-run`.
+
+### Portable tar.gz
+
+Download `WaveR_<version>-linux-x86_64.tar.gz` from the [releases page](https://github.com/FRANORDE/WaveR/releases/latest), extract it and run the `WaveR` binary.
+It requires ALSA and GTK 3 installed on the system.
+
+### Arch Linux
+
+Download `PKGBUILD` and the `WaveR_<version>_x86_64.tar.gz` source tarball from the [releases page](https://github.com/FRANORDE/WaveR/releases/latest) into the same folder, then build and install:
+
+```
+makepkg -fi
+```
+
+### Uninstall
+
+- `.deb`: `sudo apt remove wave-r`
+- AppImage and tar.gz: just delete the file or folder
+
 # Usage
 
 Open WaveR from the Start Menu or your desktop shortcut (if created).
@@ -83,6 +131,7 @@ Then select `Open file` or `Add folder` and select your song/folder.
 This is only needed if you want to compile WaveR yourself.
 
 **Prerequisite:** [Rust](https://rustup.rs) and [Git](https://git-scm.com/install/) must be installed.
+On Linux, building also needs the ALSA and GTK 3 development packages (e.g. on Debian/Ubuntu: `sudo apt install libasound2-dev libgtk-3-dev pkg-config`).
 
 ```
 git clone https://github.com/FRANORDE/WaveR.git
@@ -90,7 +139,7 @@ cd WaveR
 cargo build --release
 ```
 
-The executable will be in `target\release\WaveR.exe`.
+The executable will be in `target/release/` (`WaveR.exe` on Windows, `WaveR` on Linux).
 
 # Notes, credits and licenses
 

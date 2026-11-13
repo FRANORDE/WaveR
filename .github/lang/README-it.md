@@ -28,6 +28,11 @@ Puoi rimuovere i brani dalla coda usando il pulsante `X` accanto ad essi.
 Nell'angolo in basso a destra puoi trovare la barra del volume.
 Il cursore del volume modifica solo il volume di WaveR, non quello del sistema.
 
+### Lingua
+
+L'interfaccia è disponibile in inglese e italiano.
+Puoi cambiarla in qualsiasi momento dal menu **Lingua** nella barra in alto.
+
 # Installazione
 
 ## Installatore
@@ -67,7 +72,50 @@ scoop bucket rm franorde
 
 ---
 
-Maggiori informazioni su [scoop-bucket](https://github.com/FRANORDE/WaveR/releases/latest/tree/main#installation)
+Maggiori informazioni su [scoop-bucket](https://github.com/FRANORDE/scoop-bucket/tree/main#installation)
+
+## Linux
+
+WaveR funziona anche su Linux, a partire dalla versione 2.0.0.
+
+### Debian / Ubuntu
+
+Scarica `WaveR_<version>_amd64.deb` dalla [pagina delle release](https://github.com/FRANORDE/WaveR/releases/latest) e installalo:
+
+```
+sudo apt install ./WaveR_<version>_amd64.deb
+```
+
+Il `.deb` si porta da solo le dipendenze di runtime (ALSA, GTK 3).
+
+### AppImage
+
+Scarica `WaveR_<version>_x86_64.AppImage` dalla [pagina delle release](https://github.com/FRANORDE/WaveR/releases/latest), rendilo eseguibile ed eseguilo:
+
+```
+chmod +x WaveR_<version>_x86_64.AppImage
+./WaveR_<version>_x86_64.AppImage
+```
+
+> Se la tua distribuzione non ha FUSE, eseguilo con `--appimage-extract-and-run`.
+
+### tar.gz portatile
+
+Scarica `WaveR_<version>-linux-x86_64.tar.gz` dalla [pagina delle release](https://github.com/FRANORDE/WaveR/releases/latest), estrailo ed esegui il binario `WaveR`.
+Richiede ALSA e GTK 3 installati nel sistema.
+
+### Arch Linux
+
+Scarica `PKGBUILD` e il tarball sorgente `WaveR_<version>_x86_64.tar.gz` dalla [pagina delle release](https://github.com/FRANORDE/WaveR/releases/latest) nella stessa cartella, poi compila e installa:
+
+```
+makepkg -fi
+```
+
+### Disinstallazione
+
+- `.deb`: `sudo apt remove wave-r`
+- AppImage e tar.gz: elimina semplicemente il file o la cartella
 
 # Utilizzo
 
@@ -83,6 +131,7 @@ Quindi seleziona `Apri file` o `Aggiungi cartella` e seleziona il tuo brano o la
 Questo è necessario solo se vuoi compilare WaveR da solo.
 
 **Prerequisito:** Devono essere installati [Rust](https://rustup.rs) e [Git](https://git-scm.com/install/).
+Su Linux la compilazione richiede anche i pacchetti di sviluppo di ALSA e GTK 3 (es. su Debian/Ubuntu: `sudo apt install libasound2-dev libgtk-3-dev pkg-config`).
 
 ```
 git clone https://github.com/FRANORDE/WaveR.git
@@ -90,7 +139,7 @@ cd WaveR
 cargo build --release
 ```
 
-L'eseguibile si troverà in `target\release\WaveR.exe`.
+L'eseguibile si troverà in `target/release/` (`WaveR.exe` su Windows, `WaveR` su Linux).
 
 # Note, riconoscimenti e licenze
 
