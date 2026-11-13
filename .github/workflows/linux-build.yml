@@ -18,7 +18,8 @@ jobs:
           # libgtk-3-dev: rfd's gtk3 backend links GTK/GLib at build time
           # (gtk-sys finds them via pkg-config). Users installing the deb only
           # need the runtime libs, already listed in the packager depends.
-          apt-get install -y libasound2-dev pkg-config build-essential curl libgtk-3-dev
+          # file: appimagetool requires the `file` utility.
+          apt-get install -y libasound2-dev pkg-config build-essential curl libgtk-3-dev file
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Compile release
