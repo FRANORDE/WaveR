@@ -75,6 +75,10 @@ jobs:
         run: |
           cargo packager --release --formats deb,appimage,pacman
       - name: Package tar.gz
+        # Container jobs run steps with `sh` (dash) by default, NOT bash:
+        # dash has no `[[ =~ ]]`, so the version test below would always
+        # fail and silently fall back to VER=dev, even on tags.
+        shell: bash
         run: |
           VER="${GITHUB_REF_NAME#v}"         # tag "v2.0.0" -> "2.0.0"
           [[ "$VER" =~ ^[0-9] ]] || VER=dev  # manual runs have a branch name, not a tag
