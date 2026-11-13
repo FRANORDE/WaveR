@@ -31,3 +31,4 @@ rustc-ice-*.txt
 # Added by me
 .zed/
 dist/
+agent/
