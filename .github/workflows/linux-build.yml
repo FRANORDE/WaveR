@@ -16,26 +16,31 @@ jobs:
         run: |
           apt-get update
           apt-get install -y libasound2-dev pkg-config build-essential curl
-
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-
       - name: Compile release
         run: cargo build --release --locked
-
+      - name: Install cargo-packager
+        run: cargo install cargo-packager --locked
+      - name: Package deb, AppImage, pacman
+        # APPIMAGE_EXTRACT_AND_RUN lets linuxdeploy (itself an AppImage) run
+        # in the container without FUSE/libfuse2.
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+        run: |
+          cargo packager --release --formats deb,appimage,pacman
       - name: Package tar.gz
         run: |
           VER="${GITHUB_REF_NAME#v}"         # tag "v2.0.0" -> "2.0.0"
           [[ "$VER" =~ ^[0-9] ]] || VER=dev  # manual runs have a branch name, not a tag
-          mkdir -p staging
+          mkdir -p staging dist
           cp target/release/WaveR staging/
           cp LICENSE staging/
           cp licenses/THIRD-PARTY-NOTICES.txt staging/
-          tar -czf "WaveR-$VER-linux-x86_64.tar.gz" -C staging .
-
+          tar -czf "dist/WaveR-$VER-linux-x86_64.tar.gz" -C staging .
       - name: Upload artifact
         uses: actions/upload-artifact@v6
         with:
           name: WaveR-linux
-          path: WaveR-*.tar.gz
+          path: dist/*
           if-no-files-found: error
