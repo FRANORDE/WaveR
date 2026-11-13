@@ -11,7 +11,9 @@ permissions:
   contents: write
 
 jobs:
-  create:
+  # Each job runs on a fresh machine; the only way to move files between
+  # jobs is through artifacts (uploaded here, downloaded by the draft job).
+  windows:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
@@ -25,13 +27,6 @@ jobs:
         run: '& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" WaveR.iss'
       - name: dist
         run: dir dist
-      - name: Upload installer
-        uses: actions/upload-artifact@v6
-        with:
-          name: WaveR-Setup           # the name you will see in the Artifacts list
-          path: dist/*.exe            # which files to upload; the * matches any name
-          if-no-files-found: error    # fail the step if no installer exists
-          retention-days: 5           # how many days GitHub keeps it
       - name: Create portable zip
         run: |
           Copy-Item LICENSE dist\WaveR-LICENSE.txt
@@ -42,9 +37,75 @@ jobs:
           Write-Host "SHA256: $hash"
           "SHA256 of WaveR-x64.zip: $hash" | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
           "$hash  WaveR-x64.zip" | Out-File -Encoding ascii dist\WaveR-x64.zip.sha256
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: WaveR-windows         # fetched by the draft job
+          path: dist/*                # installer + zip + sha256, all at once
+          if-no-files-found: error
+          retention-days: 5
+
+  linux:
+    # The host can be anything with Docker; the OS that matters for the
+    # produced binary is the container image below (old glibc = wide compat).
+    runs-on: ubuntu-latest
+    container:
+      image: ubuntu:22.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install build dependencies
+        run: |
+          # libgtk-3-dev: rfd's gtk3 backend links GTK/GLib at build time
+          # (gtk-sys finds them via pkg-config). Users installing the deb only
+          # need the runtime libs, already listed in the packager depends.
+          # file: appimagetool requires the `file` utility.
+          apt-get update
+          apt-get install -y libasound2-dev pkg-config build-essential curl libgtk-3-dev file
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Compile release
+        run: cargo build --release --locked
+      - name: Install cargo-packager
+        run: cargo install cargo-packager --locked
+      - name: Package deb, AppImage, pacman
+        # APPIMAGE_EXTRACT_AND_RUN lets linuxdeploy (itself an AppImage) run
+        # in the container without FUSE/libfuse2.
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+        run: |
+          cargo packager --release --formats deb,appimage,pacman
+      - name: Package tar.gz
+        run: |
+          VER="${GITHUB_REF_NAME#v}"         # tag "v2.0.0" -> "2.0.0"
+          [[ "$VER" =~ ^[0-9] ]] || VER=dev  # manual runs have a branch name, not a tag
+          mkdir -p staging dist
+          cp target/release/WaveR staging/
+          cp LICENSE staging/
+          cp licenses/THIRD-PARTY-NOTICES.txt staging/
+          tar -czf "dist/WaveR-$VER-linux-x86_64.tar.gz" -C staging .
+      - name: Upload Linux artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: WaveR-linux
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 5
+
+  draft:
+    # Fresh machine: no filesystem shared with the jobs above, so the release
+    # files travel through the artifacts downloaded in the first step.
+    runs-on: ubuntu-latest
+    needs: [windows, linux]   # runs only after BOTH build jobs succeeded
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true    # both artifacts unpack into the same dist/
+      - name: List release files
+        run: ls -la dist
       - name: Create release draft
-        if: startsWith(github.ref, 'refs/tags/')
-        shell: bash
+        if: startsWith(github.ref, 'refs/tags/')   # skipped on manual runs
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "${{ github.ref_name }}" dist/*.exe dist/*.zip dist/*.sha256  --title "${{ github.ref_name }}" --generate-notes --draft
+        run: gh release create "${{ github.ref_name }}" dist/* --title "${{ github.ref_name }}" --generate-notes --draft
