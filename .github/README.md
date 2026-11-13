@@ -36,7 +36,7 @@ You can switch it anytime from the **Language** menu in the top bar.
 
 # Installation
 
-## Installer
+## Windows
 
 Download the latest `WaveR-Setup-<version>.exe` from the [releases page](https://github.com/FRANORDE/WaveR/releases/latest) (use releases! Downloading the code directly might be unstable).
 
@@ -52,7 +52,7 @@ The wizard lets you choose:
 
 Use **Settings → Apps → Installed apps** and remove WaveR.
 
-## Scoop
+## Scoop (Windows)
 
 Requires [Scoop](https://scoop.sh/) installed
 
