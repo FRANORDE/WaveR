@@ -115,6 +115,7 @@ makepkg -fi
 ### Disinstallazione
 
 - `.deb`: `sudo apt remove wave-r`
+- Arch: `sudo pacman -R wave-r`
 - AppImage e tar.gz: elimina semplicemente il file o la cartella
 
 # Utilizzo
