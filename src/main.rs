@@ -1,7 +1,14 @@
-// Comments for me to understand code (im a noob to Rust), but also for you to understand what is going on
+// Comments for me to understand code (im average to Rust), but also for you to understand what is going on
+
 // This syntax down below is an attribute and it talks to the entire file
 // it basically means: Only on releases versions, tell windows to not open a terminal window
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
+// `mod` declares a module and attaches a file to the crate's module tree
+// (files in src/ are NOT compiled just by existing): this is what makes
+// src/settings.rs part of the build
+mod settings;
+
 // imports bring code from other crates, so we can write less code
 // so, this ones below help you write less code, and make it more readable
 use eframe::{NativeOptions, egui};
@@ -14,7 +21,7 @@ use std::time::Duration;
 // translations embedded in the exe at compile time
 const IT: &str = include_str!("../assets/lang/it.txt");
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 enum Language {
     English,
     Italian,
@@ -69,7 +76,7 @@ fn main() -> eframe::Result {
     )
 }
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 enum RepeatMode {
     Off,
     One,
@@ -95,6 +102,7 @@ struct WaveR {
     show_loop_button: bool,
     language: Language,
     strings: Rc<HashMap<&'static str, &'static str>>, // the active translations
+    last_saved: settings::Settings, // the settings as last written to disk
 }
 
 impl WaveR {
@@ -105,6 +113,10 @@ impl WaveR {
             OutputStreamBuilder::open_default_stream().expect("no audio output device found"); // open the default audio device
         // ^ .expect() crashes with this message if there is no audio device
         let sink = Sink::connect_new(stream.mixer()); // connect the queue to the audio mixer
+
+        // persisted settings are read ONCE, here at construction time:
+        // the app then starts in the language the user chose last time
+        let settings = settings::Settings::load();
 
         Self {
             // ^ create the struct with its starting values
@@ -123,8 +135,9 @@ impl WaveR {
             repeat: RepeatMode::Off,
             show_shuffle_button: true,
             show_loop_button: true,
-            language: Language::English,
-            strings: Rc::new(strings_for(Language::English)),
+            language: settings.language,
+            strings: Rc::new(strings_for(settings.language)),
+            last_saved: settings,
         }
     }
 
@@ -228,6 +241,22 @@ impl WaveR {
             self.play_file(&next);
         } else {
             self.sink.clear(); // nothing left: stop
+        }
+    }
+
+    /// The current settings, derived from the app state: this is what
+    /// gets compared against `last_saved` and written to disk. Keeping
+    /// the conversion in ONE place means a new field is wired here and
+    /// in WaveR::new() only.
+    fn settings_snapshot(&self) -> settings::Settings {
+        settings::Settings {
+            language: self.language,
+            shuffle: self.shuffle,
+            repeat: self.repeat,
+            show_shuffle_button: self.show_shuffle_button,
+            show_loop_button: self.show_loop_button,
+            show_queue: self.show_queue,
+            show_history: self.show_history,
         }
     }
 }
@@ -556,6 +585,16 @@ impl eframe::App for WaveR {
             // this keeps the progress bar moving by itself
             ui.ctx().request_repaint_after(Duration::from_millis(200));
         });
+
+        // ONE save point for the whole frame: compare the current
+        // settings against the last ones written to disk, and persist
+        // only when something actually changed. No per-widget save code:
+        // a forgotten widget would be a bug, this cannot be forgotten
+        let snapshot = self.settings_snapshot();
+        if snapshot != self.last_saved {
+            snapshot.save();
+            self.last_saved = snapshot;
+        }
     }
 }
 
