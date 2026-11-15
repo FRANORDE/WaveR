@@ -34,6 +34,15 @@ The volume slider only changes WaveR’s volume, not the system volume.
 The interface is available in English and Italiano.
 You can switch it anytime from the **Language** menu in the top bar.
 
+### Theme
+
+By default WaveR follows your system theme and switches automatically when it changes.
+From the **Theme** menu in the top bar you can force **Dark** or **Light**, or choose **Custom**: pick a background color and buttons, text and sliders adapt to it for a readable, matching look.
+
+### Remembered settings
+
+Language, theme, shuffle, loop and panel visibility are saved in `~/.waver/config/settings.ini` and restored at the next launch.
+
 # Installation
 
 ## Windows

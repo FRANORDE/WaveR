@@ -33,6 +33,15 @@ Il cursore del volume modifica solo il volume di WaveR, non quello del sistema.
 L'interfaccia è disponibile in inglese e italiano.
 Puoi cambiarla in qualsiasi momento dal menu **Lingua** nella barra in alto.
 
+### Tema
+
+Per impostazione predefinita WaveR segue il tema di sistema e cambia automaticamente quando quello cambia.
+Dal menu **Tema** nella barra in alto puoi forzare **Scuro** o **Chiaro**, oppure scegliere **Personalizzato**: scegli un colore di sfondo e pulsanti, testo e cursori si adattano a esso, restando sempre leggibili.
+
+### Impostazioni salvate
+
+Lingua, tema, riproduzione casuale, loop e visibilità dei pannelli vengono salvati in `~/.waver/config/settings.ini` e ripristinati al prossimo avvio.
+
 # Installazione
 
 ## Windows
