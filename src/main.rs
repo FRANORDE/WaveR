@@ -9,6 +9,10 @@
 // src/settings.rs part of the build
 mod settings;
 
+// headless UI test for the Theme menu (compiled only by `cargo test`)
+#[cfg(test)]
+mod ui;
+
 // imports bring code from other crates, so we can write less code
 // so, this ones below help you write less code, and make it more readable
 use eframe::{NativeOptions, egui};
@@ -83,6 +87,17 @@ enum RepeatMode {
     All,
 }
 
+// Which theme the user wants. System = follow the OS (egui switches by
+// itself when the OS changes theme). Custom = a palette derived from
+// the user's own background color (see custom_visuals below).
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Theme {
+    System,
+    Dark,
+    Light,
+    Custom,
+}
+
 struct WaveR {
     // ^ a struct is a collection of data, like a class in other languages
     _stream: OutputStream, // connection to the audio device, must stay alive or the sound stops
@@ -100,9 +115,12 @@ struct WaveR {
     repeat: RepeatMode,
     show_shuffle_button: bool,
     show_loop_button: bool,
+    theme: Theme,
+    custom_bg: egui::Color32, // the user's own background (used by Theme::Custom)
     language: Language,
     strings: Rc<HashMap<&'static str, &'static str>>, // the active translations
-    last_saved: settings::Settings, // the settings as last written to disk
+    last_saved: settings::Settings,                   // the settings as last written to disk
+    last_look: Option<(Theme, egui::Color32)>,        // the look as last applied to the context
 }
 
 impl WaveR {
@@ -129,15 +147,22 @@ impl WaveR {
             current_path: None,
             history: Vec::new(),
             show_about: false,
-            show_queue: true,
-            show_history: false,
-            shuffle: false,
-            repeat: RepeatMode::Off,
-            show_shuffle_button: true,
-            show_loop_button: true,
+            // the toggles come from the settings file: initializing them
+            // to fixed defaults would make the first frame compare
+            // "defaults" against the loaded file and overwrite it
+            show_queue: settings.show_queue,
+            show_history: settings.show_history,
+            shuffle: settings.shuffle,
+            repeat: settings.repeat,
+            show_shuffle_button: settings.show_shuffle_button,
+            show_loop_button: settings.show_loop_button,
+            theme: settings.theme,
+            custom_bg: settings.custom_bg,
             language: settings.language,
             strings: Rc::new(strings_for(settings.language)),
             last_saved: settings,
+            // None = "nothing applied yet": the first frame applies the look
+            last_look: None,
         }
     }
 
@@ -244,6 +269,38 @@ impl WaveR {
         }
     }
 
+    /// Apply the theme preference and (for Custom) the derived palette
+    /// to the context. Called only when the appearance changed (see
+    /// last_look), not every frame: set_theme/set_visuals_of write into
+    /// shared context state. With System, egui itself keeps following
+    /// the OS theme after we set the preference.
+    fn apply_appearance(&self, ctx: &egui::Context) {
+        // ThemePreference is what egui switches on: Dark, Light or
+        // System (follow the OS). Custom reuses System, because the
+        // palette below overwrites BOTH built-in themes: whichever is
+        // active, the look is the user's
+        let preference = match self.theme {
+            Theme::Dark => egui::ThemePreference::Dark,
+            Theme::Light => egui::ThemePreference::Light,
+            Theme::System | Theme::Custom => egui::ThemePreference::System,
+        };
+        ctx.set_theme(preference);
+
+        match self.theme {
+            Theme::Custom => {
+                let custom = custom_visuals(self.custom_bg);
+                ctx.set_visuals_of(egui::Theme::Dark, custom.clone());
+                ctx.set_visuals_of(egui::Theme::Light, custom);
+            }
+            // the built-in look for both themes: a previous custom
+            // theme may have overwritten them
+            _ => {
+                ctx.set_visuals_of(egui::Theme::Dark, egui::Visuals::dark());
+                ctx.set_visuals_of(egui::Theme::Light, egui::Visuals::light());
+            }
+        }
+    }
+
     /// The current settings, derived from the app state: this is what
     /// gets compared against `last_saved` and written to disk. Keeping
     /// the conversion in ONE place means a new field is wired here and
@@ -257,6 +314,8 @@ impl WaveR {
             show_loop_button: self.show_loop_button,
             show_queue: self.show_queue,
             show_history: self.show_history,
+            theme: self.theme,
+            custom_bg: self.custom_bg,
         }
     }
 }
@@ -270,6 +329,14 @@ impl eframe::App for WaveR {
         // ^ &mut self = our app data, ui = the "brush" we use to draw widgets
 
         let strings = self.strings.clone(); // copies only the pointer, not the whole map
+
+        // apply the look only when it actually changed: last_look starts
+        // as None, so the very first frame applies the saved theme
+        let look = (self.theme, self.custom_bg);
+        if self.last_look != Some(look) {
+            self.apply_appearance(ui.ctx());
+            self.last_look = Some(look);
+        }
 
         if self.sink.empty() {
             if self.repeat == RepeatMode::One {
@@ -360,6 +427,21 @@ impl eframe::App for WaveR {
                         ui.checkbox(&mut self.show_history, tr(&strings, "History"));
                     });
                 });
+                // The Theme menu must NOT close on a click inside it:
+                // egui's default close behavior is CloseOnClick (ANY click,
+                // inside or outside, closes the popup), so selecting Custom
+                // used to close the menu and the picker was never reachable.
+                // CloseOnClickOutside = close only when clicking outside.
+                // The content lives in theme_menu_content() so the headless
+                // UI test can exercise the exact same widgets.
+                egui::menu::MenuButton::new(tr(&strings, "Theme"))
+                    .config(
+                        egui::menu::MenuConfig::new()
+                            .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside),
+                    )
+                    .ui(ui, |ui| {
+                        theme_menu_content(ui, &mut self.theme, &mut self.custom_bg, &strings)
+                    });
                 ui.menu_button(tr(&strings, "Language"), |ui| {
                     if ui
                         .radio_value(&mut self.language, Language::English, "English")
@@ -598,6 +680,162 @@ impl eframe::App for WaveR {
     }
 }
 
+// --- theme menu content (shared with the headless UI test) ---
+
+/// Rects and flags of the Theme menu rows, captured so the headless
+/// UI test (src/ui.rs) can verify what the user actually sees.
+/// The app discards the returned value; the fields are read only by
+/// the test, which is why dead_code is silenced here.
+// (the allow covers the struct fields AND the EMPTY const below: both
+// are read only by the headless UI test, not by the app itself)
+#[allow(dead_code)]
+struct ThemeMenuLayout {
+    /// the Custom radio row (present in every theme)
+    custom_radio: egui::Rect,
+    /// true when the inline color picker was drawn (Custom theme)
+    picker_shown: bool,
+}
+
+#[allow(dead_code)] // EMPTY is used by the test only
+impl ThemeMenuLayout {
+    /// "nothing captured yet": neutral values meaning "not laid out"
+    const EMPTY: Self = Self {
+        custom_radio: egui::Rect::NOTHING,
+        picker_shown: false,
+    };
+}
+
+/// Content of the Theme menu: the four radios and, for Custom, the
+/// inline background color picker. Split out of `update` so the
+/// headless UI test exercises THE SAME widget code as the app, not a
+/// copy.
+fn theme_menu_content(
+    ui: &mut egui::Ui,
+    theme: &mut Theme,
+    custom_bg: &mut egui::Color32,
+    strings: &HashMap<&'static str, &'static str>,
+) -> ThemeMenuLayout {
+    ui.radio_value(theme, Theme::System, tr(strings, "Follow system"));
+    ui.radio_value(theme, Theme::Dark, tr(strings, "Dark"));
+    ui.radio_value(theme, Theme::Light, tr(strings, "Light"));
+    let custom_radio = ui.radio_value(theme, Theme::Custom, tr(strings, "Custom")).rect;
+
+    let mut picker_shown = false;
+    if *theme == Theme::Custom {
+        ui.separator();
+        ui.label(tr(strings, "Background"));
+        // INLINE color picker, NOT the swatch+popup version. egui keeps
+        // ONE active popup per viewport (Memory.popups is a single
+        // slot): opening the picker popup evicts the menu popup, and
+        // since the picker is built INSIDE the menu closure, both die
+        // within a frame (reproduced headless in src/ui.rs). The
+        // inline version has no second popup: the menu stays open and
+        // the app preview updates live while dragging.
+        ui.spacing_mut().slider_width = 200.0; // room for the preview bar
+        egui::color_picker::color_picker_color32(
+            ui,
+            custom_bg,
+            egui::color_picker::Alpha::Opaque, // a background is not transparent
+        );
+        picker_shown = true;
+    }
+
+    ThemeMenuLayout { custom_radio, picker_shown }
+}
+
+// --- custom theme: a whole palette derived from ONE picked color ---
+
+/// Build the visuals for the custom theme: the background stays as the
+/// user picked it, buttons become lighter versions of it, and text
+/// takes the opposite brightness (light text on dark backgrounds and
+/// the reverse). Starts from the built-in theme closest to the chosen
+/// color, then overrides the colors that define the look.
+fn custom_visuals(bg: egui::Color32) -> egui::Visuals {
+    let is_dark = luminance(bg) < 0.5;
+
+    let mut v = if is_dark {
+        egui::Visuals::dark()
+    } else {
+        egui::Visuals::light()
+    };
+
+    // the three button states, progressively lighter versions of the bg
+    let button = lighten(bg, 0.16);
+    let button_hover = lighten(bg, 0.28);
+    let button_active = lighten(bg, 0.40);
+    let text = if is_dark {
+        egui::Color32::from_rgb(235, 235, 240) // near-white
+    } else {
+        egui::Color32::from_rgb(28, 28, 32) // near-black
+    };
+    // recessed areas (slider tracks, text fields) go the other way
+    let extreme = if is_dark {
+        darken(bg, 0.25)
+    } else {
+        lighten(bg, 0.25)
+    };
+
+    v.dark_mode = is_dark;
+    v.panel_fill = bg; // main panels
+    v.window_fill = bg; // windows and popups (menus, the picker itself)
+    v.faint_bg_color = bg; // faint stripes and alternating rows
+    v.extreme_bg_color = extreme;
+    v.override_text_color = Some(text);
+    v.hyperlink_color = button_active;
+    v.selection.bg_fill = button_active; // selected-text highlight
+    v.selection.stroke.color = text;
+
+    // every widget family: the fills become the derived button colors,
+    // and the foreground (labels/icons ON the widgets) the text color
+    for w in [
+        &mut v.widgets.noninteractive,
+        &mut v.widgets.inactive,
+        &mut v.widgets.hovered,
+        &mut v.widgets.active,
+        &mut v.widgets.open,
+    ] {
+        w.fg_stroke.color = text;
+    }
+    v.widgets.noninteractive.bg_fill = bg;
+    v.widgets.noninteractive.weak_bg_fill = bg;
+    v.widgets.inactive.bg_fill = button;
+    v.widgets.inactive.weak_bg_fill = button;
+    v.widgets.hovered.bg_fill = button_hover;
+    v.widgets.hovered.weak_bg_fill = button_hover;
+    v.widgets.active.bg_fill = button_active;
+    v.widgets.active.weak_bg_fill = button_active;
+    v.widgets.open.bg_fill = button_hover;
+    v.widgets.open.weak_bg_fill = button_hover;
+
+    v
+}
+
+/// Mix the color toward white by a fraction t: 0.0 = unchanged, 1.0 = white
+fn lighten(c: egui::Color32, t: f32) -> egui::Color32 {
+    let mix = |x: u8| (x as f32 + (255.0 - x as f32) * t).round() as u8;
+    egui::Color32::from_rgb(mix(c.r()), mix(c.g()), mix(c.b()))
+}
+
+/// Mix the color toward black by a fraction t: 0.0 = unchanged, 1.0 = black
+fn darken(c: egui::Color32, t: f32) -> egui::Color32 {
+    let mix = |x: u8| (x as f32 * (1.0 - t)).round() as u8;
+    egui::Color32::from_rgb(mix(c.r()), mix(c.g()), mix(c.b()))
+}
+
+/// Perceived brightness from 0.0 (black) to 1.0 (white): the classic
+/// eye-weighted average, where green counts more than blue
+fn luminance(c: egui::Color32) -> f32 {
+    (0.2126 * c.r() as f32 + 0.7152 * c.g() as f32 + 0.0722 * c.b() as f32) / 255.0
+}
+
+/// The color this theme draws text and icons with: custom themes set it
+/// directly, built-in themes don't override it so read the widget default
+fn text_color(ui: &egui::Ui) -> egui::Color32 {
+    ui.visuals()
+        .override_text_color
+        .unwrap_or(ui.visuals().widgets.noninteractive.fg_stroke.color)
+}
+
 fn round_button(ui: &mut egui::Ui, playing: bool) -> egui::Response {
     // ^ returns a Response, so the caller can use .clicked() just like with ui.button()
     let size = egui::vec2(40.0, 40.0); // width and height of the button
@@ -628,8 +866,10 @@ fn round_button(ui: &mut egui::Ui, playing: bool) -> egui::Response {
     let t = ui.ctx().animate_bool_with_time(response.id, playing, 0.15);
 
     // gamma_multiply(x) changes the opacity: 1.0 = fully visible, 0.0 = invisible
-    let play_color = egui::Color32::WHITE.gamma_multiply(1.0 - t); // fades OUT when t grows
-    let pause_color = egui::Color32::WHITE.gamma_multiply(t); // fades IN when t grows
+    // the icon follows the theme's text color: visible on any background
+    let icon = text_color(ui);
+    let play_color = icon.gamma_multiply(1.0 - t); // fades OUT when t grows
+    let pause_color = icon.gamma_multiply(t); // fades IN when t grows
 
     // --- PAUSE ICON: two vertical bars, one left and one right of the center ---
     ui.painter().rect_filled(
@@ -663,10 +903,13 @@ fn skip_button(ui: &mut egui::Ui, forward: bool) -> egui::Response {
     let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click());
     let c = rect.center();
 
+    // idle/hover colors follow the theme's text color: readable on any
+    // custom background (0.7 opacity looks like the old gray 170)
+    let icon = text_color(ui);
     let color = if response.hovered() {
-        egui::Color32::WHITE
+        icon
     } else {
-        egui::Color32::from_gray(170)
+        icon.gamma_multiply(0.7)
     };
 
     let dir = if forward { 1.0 } else { -1.0 };
@@ -708,13 +951,15 @@ fn shuffle_button(ui: &mut egui::Ui, active: bool) -> egui::Response {
     let (rect, response) = ui.allocate_exact_size(egui::vec2(28.0, 28.0), egui::Sense::click());
     let c = rect.center();
 
-    // blue when active, white on hover, gray otherwise
+    // blue stays the "active" accent; idle/hover follow the theme's text
+    // color so the icons stay readable on any custom background
+    let icon = text_color(ui);
     let color = if active {
         egui::Color32::from_rgb(90, 160, 255)
     } else if response.hovered() {
-        egui::Color32::WHITE
+        icon
     } else {
-        egui::Color32::from_gray(170)
+        icon.gamma_multiply(0.7)
     };
 
     let stroke = egui::Stroke::new(2.0, color);
@@ -744,12 +989,15 @@ fn loop_button(ui: &mut egui::Ui, mode: RepeatMode) -> egui::Response {
     // the loop is "on" for both All and One
     let active = mode != RepeatMode::Off;
 
+    // same rule as the shuffle button: blue accent when on, theme text
+    // color otherwise
+    let icon = text_color(ui);
     let color = if active {
         egui::Color32::from_rgb(90, 160, 255)
     } else if response.hovered() {
-        egui::Color32::WHITE
+        icon
     } else {
-        egui::Color32::from_gray(170)
+        icon.gamma_multiply(0.7)
     };
 
     let painter = ui.painter();

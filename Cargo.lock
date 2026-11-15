@@ -9,6 +9,7 @@ dependencies = [
  "configparser",
  "eframe",
  "egui",
+ "log",
  "rfd",
  "rodio",
  "webbrowser",

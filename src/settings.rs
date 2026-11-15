@@ -6,8 +6,13 @@
 use std::path::{Path, PathBuf};
 
 use configparser::ini::Ini;
+use egui::Color32;
 
-use crate::{Language, RepeatMode};
+use crate::{Language, RepeatMode, Theme};
+
+/// The custom background used when nothing was saved yet (only visible
+/// in the Custom theme, but always written so the file shape is stable).
+const DEFAULT_CUSTOM_BG: Color32 = Color32::from_rgb(0x20, 0x22, 0x2B);
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Settings {
@@ -18,9 +23,8 @@ pub struct Settings {
     pub show_loop_button: bool,
     pub show_queue: bool,
     pub show_history: bool,
-    // steps 2-3: theme + colors, commented until those types exist
-    // pub theme: Theme,
-    // pub colors: Colors,
+    pub theme: Theme,
+    pub custom_bg: Color32,
 }
 
 impl Settings {
@@ -56,6 +60,21 @@ impl Settings {
             show_loop_button: read_bool(&ini, "show_loop_button", true),
             show_queue: read_bool(&ini, "show_queue", true),
             show_history: read_bool(&ini, "show_history", false),
+            theme: match ini.get("wave-r", "theme").as_deref() {
+                Some("dark") => Theme::Dark,
+                Some("light") => Theme::Light,
+                Some("custom") => Theme::Custom,
+                _ => Theme::System, // follow the OS, the app default
+            },
+            // the '#' is NOT stored: in INI files a value is cut at the
+            // first comment symbol, and '#' IS one by default
+            // (configparser "inline comments") -> "#334455ff" would
+            // come back as "". We store "334455ff" and re-add '#'.
+            custom_bg: ini
+                .get("wave-r", "custom_bg")
+                .as_deref()
+                .and_then(|hex| Color32::from_hex(&format!("#{hex}")).ok())
+                .unwrap_or(DEFAULT_CUSTOM_BG),
         }
     }
 
@@ -77,6 +96,19 @@ impl Settings {
         ini.set("wave-r", "show_loop_button", Some(self.show_loop_button.to_string()));
         ini.set("wave-r", "show_queue", Some(self.show_queue.to_string()));
         ini.set("wave-r", "show_history", Some(self.show_history.to_string()));
+        ini.set("wave-r", "theme", Some(match self.theme {
+            Theme::System => "system".to_string(),
+            Theme::Dark => "dark".to_string(),
+            Theme::Light => "light".to_string(),
+            Theme::Custom => "custom".to_string(),
+        }));
+        // to_hex() writes the standard 8-digit form "#334455ff"; the
+        // '#' is dropped because INI values are cut at '#' (see load)
+        ini.set(
+            "wave-r",
+            "custom_bg",
+            Some(self.custom_bg.to_hex().trim_start_matches('#').to_string()),
+        );
 
         // the ~/.waver/config chain may not exist on the first run
         if let Some(parent) = path.parent() {
@@ -126,6 +158,8 @@ mod tests {
             show_loop_button: false,
             show_queue: false,
             show_history: true,
+            theme: Theme::Custom,
+            custom_bg: Color32::from_rgb(0x33, 0x44, 0x55),
         };
         let path = temp_path("waver-test-roundtrip.ini");
         let _ = std::fs::remove_file(&path);
@@ -153,8 +187,24 @@ mod tests {
                 show_loop_button: true,
                 show_queue: true,
                 show_history: false,
+                theme: Theme::System,
+                custom_bg: DEFAULT_CUSTOM_BG,
             }
         );
+    }
+
+    #[test]
+    fn unknown_value_falls_back_to_english() {
+        let path = temp_path("waver-test-unknown.ini");
+        let _ = std::fs::remove_file(&path);
+
+        // hand-edited file with an unknown value
+        let mut ini = Ini::new();
+        ini.set("wave-r", "language", Some("fr".to_string()));
+        ini.write(&path).unwrap(); // unwrap is fine in a test
+
+        assert_eq!(Settings::load_from(&path).language, Language::English);
+        let _ = std::fs::remove_file(&path);
     }
 
     #[test]
@@ -175,16 +225,20 @@ mod tests {
     }
 
     #[test]
-    fn unknown_value_falls_back_to_english() {
-        let path = temp_path("waver-test-unknown.ini");
+    fn unknown_theme_and_bad_hex_fall_back() {
+        // a hand-edited theme value and a broken color must not break
+        // the load: both land on the defaults (same rule as language)
+        let path = temp_path("waver-test-bad-theme.ini");
         let _ = std::fs::remove_file(&path);
 
-        // hand-edited file with an unknown value
         let mut ini = Ini::new();
-        ini.set("wave-r", "language", Some("fr".to_string()));
-        ini.write(&path).unwrap(); // unwrap is fine in a test
+        ini.set("wave-r", "theme", Some("sepia".to_string()));
+        ini.set("wave-r", "custom_bg", Some("#zzz".to_string()));
+        ini.write(&path).unwrap();
 
-        assert_eq!(Settings::load_from(&path).language, Language::English);
+        let loaded = Settings::load_from(&path);
+        assert_eq!(loaded.theme, Theme::System);
+        assert_eq!(loaded.custom_bg, DEFAULT_CUSTOM_BG);
         let _ = std::fs::remove_file(&path);
     }
 }

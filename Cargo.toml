@@ -16,6 +16,10 @@ webbrowser = "1.2.6"
 [target.'cfg(windows)'.build-dependencies]
 winresource = "0.1"
 
+# ui.rs (test) installs a tiny logger to capture egui's log::warn! output
+[dev-dependencies]
+log = "0.4"
+
 [target.'cfg(windows)'.dependencies]
 rfd = "0.17.2"
 
