@@ -23,6 +23,11 @@ Quando selezioni una cartella, WaveR inserirà automaticamente tutti i brani nel
 In alternativa, puoi usare il pulsante `Aggiungi alla coda` e selezionare i brani che desideri.
 Puoi rimuovere i brani dalla coda usando il pulsante `X` accanto ad essi.
 
+### Playlist
+
+Salva la coda corrente come playlist dal menu **Playlist**, oppure crea una playlist vuota e riempila un brano alla volta con tasto destro → **Aggiungi alla playlist** su una riga della coda o della cronologia.
+Le playlist sono file `.m3u8` salvati in `~/.waver/playlists/`, mostrati nella barra laterale sinistra con il numero di brani: cliccane una per caricarla e riprodurla.
+
 ### Volume
 
 Nell'angolo in basso a destra puoi trovare la barra del volume.

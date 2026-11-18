@@ -9,6 +9,8 @@
 // src/settings.rs part of the build
 mod settings;
 
+mod playlist;
+
 // headless UI test for the Theme menu (compiled only by `cargo test`)
 #[cfg(test)]
 mod ui;
@@ -61,6 +63,116 @@ fn tr(map: &HashMap<&'static str, &'static str>, key: &'static str) -> &'static 
     map.get(key).copied().unwrap_or(key)
 }
 
+// The playlist-name list shared by TWO submenus: the top-bar
+// "Add current song to playlist" and the right-click "Add to
+// playlist" on queue/history rows. Inside a context menu, menu_button
+// is a native SUBMENU (menu::is_in_menu is true for UiKind::Menu).
+fn playlist_add_targets(
+    ui: &mut egui::Ui,
+    strings: &HashMap<&'static str, &'static str>,
+    track: &Path,
+) {
+    let names = playlist::list();
+    if names.is_empty() {
+        ui.label(tr(strings, "No playlists yet"));
+    } else {
+        for name in names {
+            // as_str: borrow the name for the label, the String stays
+            // alive for the add_track call below
+            if ui.button(name.as_str()).clicked() {
+                // log-only: a failed add must not crash the app
+                if let Err(e) = playlist::add_track(&name, track) {
+                    eprintln!("playlist: cannot add to {name:?}: {e}");
+                }
+                ui.close();
+            }
+        }
+    }
+}
+
+// The whole "Create" action of the naming window (button AND Enter
+// key): returns true when saved, so the caller closes the window.
+// Out-params instead of `self` - E0500, see save_named_playlist.
+fn create_action(name_box: &mut String, error: &mut Option<&'static str>) -> bool {
+    let res = save_named_playlist(name_box, Vec::new(), true);
+    *error = res.err(); // None on success
+    res.is_ok()
+}
+
+// The whole "Save queue" action (button AND Enter key). An empty
+// queue is a red message, NOT a silent no-op: the queue drains as
+// songs play, so a silent nothing once made "chill" look saved
+// while the file was empty.
+fn save_queue_action(
+    name_box: &mut String,
+    error: &mut Option<&'static str>,
+    queue: &[PathBuf],
+) -> bool {
+    if queue.is_empty() {
+        *error = Some("The queue is empty");
+        return false;
+    }
+    let res = save_named_playlist(name_box, queue.to_vec(), false);
+    *error = res.err();
+    res.is_ok()
+}
+
+// Shared by the two dialog actions: sanitize the typed name and write
+// the playlist. Returns Err(KEY) with a TRANSLATION KEY for the dialog
+// to show in red; Ok(()) means the file was written and the caller
+// closes the dialog. The name box is passed IN (not `&mut self`)
+// because the dialog closure borrows the name box, the error and the
+// queued tracks as DISJOINT fields: taking `&mut self` would overlap
+// those borrows (E0500 lesson, 2026-11-17).
+//
+// must_be_new separates the two actions' semantics:
+// - Create (true): a NEW playlist, so an existing name is REJECTED
+//   (a fresh playlist must never clobber a saved one)
+// - Save queue (false): save-as semantics - the queue REPLACES the
+//   content of the named playlist, overwrite allowed. With the check
+//   on BOTH buttons this was a dead end: saving the queue onto an
+//   existing name failed and the user kept clicking the STALE
+//   playlist -> the queue looked "emptied" with nothing playing.
+fn save_named_playlist(
+    name_box: &mut String,
+    tracks: Vec<PathBuf>,
+    must_be_new: bool,
+) -> Result<(), &'static str> {
+    // own the name FIRST (borrow rule): clear() re-borrows the box
+    // mutably, and '/' '\' would write OUTSIDE the playlists folder
+    let name = name_box.trim().replace(['/', '\\'], "-");
+    if name.is_empty() {
+        // feedback instead of silence: a click with no name typed
+        return Err("Type a playlist name first");
+    }
+    // duplicate check (Create only): the comparison goes through
+    // to_lowercase (FULL Unicode): the Windows file system is
+    // case-insensitive for EVERY letter, so "Prova.m3u8",
+    // "prova.m3u8" but also "Città.m3u8" vs "città.m3u8" are THE
+    // SAME file there - all must be caught. (The first version used
+    // eq_ignore_ascii_case, which folds only A-Z: accented names
+    // slipped through.)
+    if must_be_new
+        && playlist::list()
+            .iter()
+            .any(|n| n.to_lowercase() == name.to_lowercase())
+    {
+        return Err("A playlist with this name already exists");
+    }
+    match playlist::save(&name, &tracks) {
+        // success: clear the box for the next save
+        Ok(()) => {
+            name_box.clear();
+            Ok(())
+        }
+        // log-only: a failed write never crashes and the name is KEPT
+        Err(e) => {
+            eprintln!("playlist: cannot save {name:?}: {e}");
+            Err("Cannot write the playlist file")
+        }
+    }
+}
+
 fn main() -> eframe::Result {
     // ^ main returns a Result, which can be Ok or Err
 
@@ -98,6 +210,18 @@ enum Theme {
     Custom,
 }
 
+// Which action the naming dialog will run. ONE dialog, ONE button:
+// the menu item that opened it decides both. The old shared window
+// always said "New playlist..." and offered BOTH "Create" and "Save
+// queue", so opening it from "Save queue as playlist..." and clicking
+// "Create" made an EMPTY playlist - which then did nothing when
+// clicked (the live-test report "viene creata ma non riempita").
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum PlaylistDialog {
+    Create,
+    SaveQueue,
+}
+
 struct WaveR {
     // ^ a struct is a collection of data, like a class in other languages
     _stream: OutputStream, // connection to the audio device, must stay alive or the sound stops
@@ -109,8 +233,13 @@ struct WaveR {
     current_path: Option<PathBuf>, // None when nothing has been played yet
     history: Vec<PathBuf>, // the last element is the most recent song
     show_about: bool,
+    playlist_dialog: Option<PlaylistDialog>, // open naming dialog, None = closed (transient, NOT persisted)
     show_queue: bool,
     show_history: bool,
+    show_playlists: bool,
+    playlist_name: String, // buffer of the naming-window TextEdit (transient, NOT persisted)
+    playlist_error: Option<&'static str>, // last naming-window error, shown in red (NOT persisted)
+    pending_queue: Vec<PathBuf>, // queue snapshot taken when the save dialog opens (NOT persisted)
     shuffle: bool,
     repeat: RepeatMode,
     show_shuffle_button: bool,
@@ -147,11 +276,16 @@ impl WaveR {
             current_path: None,
             history: Vec::new(),
             show_about: false,
+            playlist_dialog: None,
             // the toggles come from the settings file: initializing them
             // to fixed defaults would make the first frame compare
             // "defaults" against the loaded file and overwrite it
             show_queue: settings.show_queue,
             show_history: settings.show_history,
+            show_playlists: settings.show_playlists,
+            playlist_name: String::new(),
+            playlist_error: None,
+            pending_queue: Vec::new(),
             shuffle: settings.shuffle,
             repeat: settings.repeat,
             show_shuffle_button: settings.show_shuffle_button,
@@ -314,6 +448,7 @@ impl WaveR {
             show_loop_button: self.show_loop_button,
             show_queue: self.show_queue,
             show_history: self.show_history,
+            show_playlists: self.show_playlists,
             theme: self.theme,
             custom_bg: self.custom_bg,
         }
@@ -416,6 +551,45 @@ impl eframe::App for WaveR {
                         ui.close();
                     }
                 });
+                // the playlist menu: create-first flow - create an
+                // empty playlist here, then add songs from the queue /
+                // history rows (right-click) or from this very menu
+                ui.menu_button(tr(&strings, "Playlist"), |ui| {
+                    if ui.button(tr(&strings, "New playlist...")).clicked() {
+                        // only OPEN the dialog: nothing is written until
+                        // the single Create button (or Enter) is pressed
+                        self.playlist_dialog = Some(PlaylistDialog::Create);
+                        self.playlist_name.clear(); // start from a clean name
+                        self.playlist_error = None;
+                        ui.close();
+                    }
+                    if ui.button(tr(&strings, "Save queue as playlist...")).clicked() {
+                        // SNAPSHOT the queue NOW: it drains as songs play
+                        // (play_file removes the started track, the
+                        // auto-advance consumes the rest), so reading it
+                        // later could save fewer tracks than the user saw
+                        self.pending_queue = self.queue.clone();
+                        self.playlist_dialog = Some(PlaylistDialog::SaveQueue);
+                        self.playlist_name.clear(); // start from a clean name
+                        // visible right away if there is nothing to save:
+                        // typing clears it, the count below stays 0
+                        self.playlist_error = if self.pending_queue.is_empty() {
+                            Some("The queue is empty")
+                        } else {
+                            None
+                        };
+                        ui.close();
+                    }
+                    // meaningful only while a song is loaded: the
+                    // submenu lists the existing playlists by name.
+                    // clone BEFORE the closure: an owned path makes the
+                    // nested borrow trivial
+                    if let Some(current) = self.current_path.clone() {
+                        ui.menu_button(tr(&strings, "Add current song to playlist"), |ui| {
+                            playlist_add_targets(ui, &strings, &current);
+                        });
+                    }
+                });
                 ui.menu_button(tr(&strings, "View"), |ui| {
                     ui.checkbox(
                         &mut self.show_shuffle_button,
@@ -423,6 +597,7 @@ impl eframe::App for WaveR {
                     );
                     ui.checkbox(&mut self.show_loop_button, tr(&strings, "Loop button"));
                     ui.menu_button(tr(&strings, "Panels"), |ui| {
+                        ui.checkbox(&mut self.show_playlists, tr(&strings, "Playlists"));
                         ui.checkbox(&mut self.show_queue, tr(&strings, "Queue"));
                         ui.checkbox(&mut self.show_history, tr(&strings, "History"));
                     });
@@ -481,6 +656,182 @@ impl eframe::App for WaveR {
                 }
             });
 
+        // --- naming dialog (same pattern as About) -----------------------
+        // ONE dialog, ONE action: the menu item that opened it decides
+        // both the title and the only button (Create vs Save queue).
+        // The old shared window always said "New playlist..." and had
+        // BOTH buttons, so opening it from "Save queue as playlist..."
+        // and clicking "Create" made an EMPTY playlist - which then did
+        // nothing when clicked (the exact live-test report).
+        // `open` is a LOCAL bool: `.open(&mut ...)` holds a borrow for
+        // the whole builder chain, and the closure also needs `intent`;
+        // a local keeps the borrows disjoint (E0500 lesson).
+        if let Some(intent) = self.playlist_dialog {
+            // button and Enter share ONE code path
+            let run = |name_box: &mut String,
+                       error: &mut Option<&'static str>,
+                       queue: &[PathBuf]|
+             -> bool {
+                match intent {
+                    PlaylistDialog::Create => create_action(name_box, error),
+                    PlaylistDialog::SaveQueue => save_queue_action(name_box, error, queue),
+                }
+            };
+            let title = match intent {
+                PlaylistDialog::Create => "New playlist...",
+                PlaylistDialog::SaveQueue => "Save queue as playlist...",
+            };
+            let button = match intent {
+                PlaylistDialog::Create => "Create",
+                PlaylistDialog::SaveQueue => "Save queue",
+            };
+            let mut open = true;
+            let mut done = false;
+            egui::Window::new(tr(&strings, title))
+                .open(&mut open)
+                .collapsible(false)
+                .resizable(false)
+                .show(ui.ctx(), |ui| {
+                    ui.label(tr(&strings, "Playlist name"));
+                    let edit = ui.text_edit_singleline(&mut self.playlist_name);
+                    // a stale error would be confusing: it clears as soon
+                    // as the name is edited (changed() fires when the text
+                    // differs from the previous frame)
+                    if edit.changed() {
+                        self.playlist_error = None;
+                    }
+                    // how many tracks THIS save will write: the snapshot
+                    // taken when the dialog opened, not the live queue
+                    if intent == PlaylistDialog::SaveQueue {
+                        let count = self.pending_queue.len().to_string();
+                        ui.label(tr(&strings, "{} tracks").replace("{}", &count));
+                    }
+                    // the error lives on SELF, not in a local: locals are
+                    // recreated every frame, the message would vanish on
+                    // the very next frame
+                    if let Some(msg) = self.playlist_error {
+                        ui.colored_label(egui::Color32::RED, tr(&strings, msg));
+                    }
+                    if ui.button(tr(&strings, button)).clicked() {
+                        done = run(
+                            &mut self.playlist_name,
+                            &mut self.playlist_error,
+                            &self.pending_queue,
+                        );
+                    }
+                    // Enter = click the ONE button of this dialog (it no
+                    // longer depends on a separate "intent" flag): the
+                    // field may not hold focus, a dialog confirms anywhere
+                    if ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                        done = run(
+                            &mut self.playlist_name,
+                            &mut self.playlist_error,
+                            &self.pending_queue,
+                        );
+                    }
+                });
+            // close AFTER .show() returns (E0500): done = success,
+            // !open = the X button was used
+            if done || !open {
+                self.playlist_dialog = None;
+                self.pending_queue.clear(); // free the snapshot
+            }
+        }
+
+        // --- playlists sidebar (left) -----------------------------------
+        // Panels stack in DECLARATION order: declared BEFORE the right
+        // panel, this one hugs the left edge of the window.
+        if self.show_playlists {
+            egui::Panel::left("playlists")
+                .resizable(true) // the user can drag its edge
+                .default_size(150.0)
+                .show(ui, |ui| {
+                    ui.heading(tr(&strings, "Playlists"));
+
+                    // A - the data and the two action slots. egui is
+                    // immediate mode: every frame the whole list is
+                    // rebuilt, so like the history list we RECORD what
+                    // the user clicked into Option slots and apply the
+                    // actions only AFTER the list is drawn.
+                    let names = playlist::list();
+                    let mut to_load: Option<String> = None; // row clicked
+                    let mut to_delete: Option<String> = None; // "x" pressed
+
+                    // B - one row per playlist: the "x" button (delete)
+                    // then a clickable label (load), inside a vertical
+                    // ScrollArea - same shape as the history list.
+                    egui::ScrollArea::vertical()
+                        .id_salt("playlists_scroll")
+                        .show(ui, |ui| {
+                            for name in &names {
+                                ui.horizontal(|ui| {
+                                    if ui.button("x").clicked() {
+                                        to_delete = Some(name.clone());
+                                    }
+                                    // the (N) count makes an EMPTY
+                                    // playlist visible at a glance: a
+                                    // click on it loads nothing, so the
+                                    // user must SEE why. (One file read
+                                    // per row per frame - fine for small
+                                    // folders, cache if it ever matters)
+                                    let count = playlist::load(name)
+                                        .map(|t| t.len())
+                                        .unwrap_or(0);
+                                    let r = ui.add(
+                                        egui::Label::new(format!("{name} ({count})"))
+                                            .sense(egui::Sense::click()),
+                                    );
+                                    if r.clicked() {
+                                        to_load = Some(name.clone());
+                                    }
+                                });
+                                ui.separator(); // thin line between rows
+                            }
+                        });
+
+                    // C - apply AFTER the scroll area, not inside it.
+                    // A loaded playlist IS a named queue: replace the
+                    // queue with its tracks, then START PLAYING the
+                    // first one. Why play here instead of relying on
+                    // the auto-advance at the top of ui()? That fires
+                    // only when the sink is EMPTY, so with a loaded or
+                    // paused song the new queue would just sit there -
+                    // exactly why a playlist click used to look like
+                    // it did nothing.
+                    if let Some(name) = to_load {
+                        // None = the file vanished between the list and
+                        // the click: the playlist just doesn't load
+                        if let Some(tracks) = playlist::load(&name) {
+                            // an EMPTY playlist must not wipe the
+                            // current queue: it has nothing to give,
+                            // so the click is a no-op (emptying the
+                            // queue on purpose is Queue > Remove all).
+                            // This is the other half of the "queue
+                            // emptied, nothing plays" report.
+                            if !tracks.is_empty() {
+                                self.queue = tracks;
+                                // remove() gives back the removed
+                                // element (same pattern as the
+                                // queue-row click); play_file stops
+                                // the old song and stores it in the
+                                // history
+                                let first = self.queue.remove(0);
+                                self.play_file(&first);
+                            }
+                        }
+                    }
+                    if let Some(name) = to_delete {
+                        // log only: a failed delete must not crash the app
+                        if let Err(e) = playlist::delete(&name) {
+                            eprintln!("playlist: cannot delete {name:?}: {e}");
+                        }
+                    }
+                    // D (the old save bar) moved to the top-bar
+                    // "Playlist" menu: save-the-queue now lives with
+                    // create-new in the naming window.
+                });
+        }
+
         if self.show_queue || self.show_history {
             egui::Panel::right("side_panels").show(ui, |ui| {
                 ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Truncate);
@@ -504,6 +855,14 @@ impl eframe::App for WaveR {
                                         egui::Label::new(name.to_string_lossy().to_string())
                                             .sense(egui::Sense::click()),
                                     );
+                                    // right-click on a history row: add
+                                    // THIS song to a playlist (the shared
+                                    // playlist_add_targets submenu)
+                                    let _ = r.context_menu(|ui| {
+                                        ui.menu_button(tr(&strings, "Add to playlist"), |ui| {
+                                            playlist_add_targets(ui, &strings, path);
+                                        });
+                                    });
                                     ui.separator();
                                     if r.clicked() {
                                         to_play_history = Some(path.clone());
@@ -533,6 +892,14 @@ impl eframe::App for WaveR {
                                             egui::Label::new(name.to_string_lossy().to_string())
                                                 .sense(egui::Sense::click()),
                                         );
+                                        // right-click on a queue row: add
+                                        // THIS song to a playlist (the shared
+                                        // playlist_add_targets submenu)
+                                        let _ = r.context_menu(|ui| {
+                                            ui.menu_button(tr(&strings, "Add to playlist"), |ui| {
+                                                playlist_add_targets(ui, &strings, path);
+                                            });
+                                        });
                                         if r.clicked() {
                                             to_play = Some(i);
                                         }
@@ -718,7 +1085,9 @@ fn theme_menu_content(
     ui.radio_value(theme, Theme::System, tr(strings, "Follow system"));
     ui.radio_value(theme, Theme::Dark, tr(strings, "Dark"));
     ui.radio_value(theme, Theme::Light, tr(strings, "Light"));
-    let custom_radio = ui.radio_value(theme, Theme::Custom, tr(strings, "Custom")).rect;
+    let custom_radio = ui
+        .radio_value(theme, Theme::Custom, tr(strings, "Custom"))
+        .rect;
 
     let mut picker_shown = false;
     if *theme == Theme::Custom {
@@ -740,7 +1109,10 @@ fn theme_menu_content(
         picker_shown = true;
     }
 
-    ThemeMenuLayout { custom_radio, picker_shown }
+    ThemeMenuLayout {
+        custom_radio,
+        picker_shown,
+    }
 }
 
 // --- custom theme: a whole palette derived from ONE picked color ---

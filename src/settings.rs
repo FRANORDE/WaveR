@@ -23,6 +23,7 @@ pub struct Settings {
     pub show_loop_button: bool,
     pub show_queue: bool,
     pub show_history: bool,
+    pub show_playlists: bool,
     pub theme: Theme,
     pub custom_bg: Color32,
 }
@@ -60,6 +61,7 @@ impl Settings {
             show_loop_button: read_bool(&ini, "show_loop_button", true),
             show_queue: read_bool(&ini, "show_queue", true),
             show_history: read_bool(&ini, "show_history", false),
+            show_playlists: read_bool(&ini, "show_playlists", true),
             theme: match ini.get("wave-r", "theme").as_deref() {
                 Some("dark") => Theme::Dark,
                 Some("light") => Theme::Light,
@@ -96,6 +98,7 @@ impl Settings {
         ini.set("wave-r", "show_loop_button", Some(self.show_loop_button.to_string()));
         ini.set("wave-r", "show_queue", Some(self.show_queue.to_string()));
         ini.set("wave-r", "show_history", Some(self.show_history.to_string()));
+        ini.set("wave-r", "show_playlists", Some(self.show_playlists.to_string()));
         ini.set("wave-r", "theme", Some(match self.theme {
             Theme::System => "system".to_string(),
             Theme::Dark => "dark".to_string(),
@@ -158,6 +161,7 @@ mod tests {
             show_loop_button: false,
             show_queue: false,
             show_history: true,
+            show_playlists: false,
             theme: Theme::Custom,
             custom_bg: Color32::from_rgb(0x33, 0x44, 0x55),
         };
@@ -187,6 +191,7 @@ mod tests {
                 show_loop_button: true,
                 show_queue: true,
                 show_history: false,
+                show_playlists: true,
                 theme: Theme::System,
                 custom_bg: DEFAULT_CUSTOM_BG,
             }

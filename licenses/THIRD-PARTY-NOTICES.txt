@@ -5825,7 +5825,7 @@ SOFTWARE.
 MIT License (MIT)
 
 Used by:
-  - WaveR 2.1.0
+  - WaveR 2.2.0
 
 MIT License
 

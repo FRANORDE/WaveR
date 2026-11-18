@@ -1,23 +1,7 @@
-// Headless UI test for the Theme menu (src/ui.rs).
-//
-// egui can run without a window: a Context is fed a RawInput each frame
-// (simulated pointer events included), and the UI is built inside
-// `ctx.run_ui`. This is how egui's own integration tests work (see
-// egui-0.37 tests/drop_zone.rs). No GPU, no display, no real mouse.
-//
-// What we verify here, click by click, using the SAME widget code as
-// the app (theme_menu_content in main.rs):
-//   1. clicking the "Theme" button opens the menu popup;
-//   2. clicking "Custom" selects the custom theme AND the menu stays
-//      open (that is what CloseOnClickOutside is for);
-//   3. the inline color picker then appears inside the menu.
-//
-// History note: the previous version used egui's swatch+popup color
-// picker INSIDE the menu, and the picker never appeared. Root cause
-// (verified by this test failing before the fix): egui keeps ONE
-// active popup per viewport, so opening the picker popup evicted the
-// menu popup, and the picker - built inside the menu closure - died
-// with it one frame later. The inline picker has no popup at all.
+// Headless UI test for the Theme menu: simulated clicks, no window,
+// same widget code as the app (theme_menu_content in main.rs).
+// How-to, click simulation and the popup root-cause history:
+// agent/settings-design.md.
 
 use std::collections::HashMap;
 use std::sync::{Mutex, Once};

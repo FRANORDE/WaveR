@@ -24,6 +24,11 @@ When selecting a folder, WaveR will automatically put all the songs in the queue
 Alternively, you can use the `Add to queue` button and select the songs you want.
 You can remove songs from the queue using the `X` button next to them.
 
+### Playlists
+
+Save the current queue as a playlist from the **Playlist** menu, or create an empty playlist and fill it one song at a time with right-click → **Add to playlist** on any queue or history row.
+Playlists are plain `.m3u8` files stored in `~/.waver/playlists/`, shown in the left sidebar with their track count: click one to load and play it.
+
 ### Volume
 
 In the bottom-right corner, you can find the volume bar.
