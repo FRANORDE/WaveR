@@ -49,7 +49,7 @@ Lingua, tema, riproduzione casuale, loop e visibilità dei pannelli vengono salv
 
 # Installazione
 
-## Windows
+## Installer (Windows)
 
 Scarica l'ultimo `WaveR-Setup-<version>.exe` dalla [pagina delle release](https://github.com/FRANORDE/WaveR/releases/latest) (usa le release! Scaricare direttamente il codice potrebbe risultare instabile).
 
