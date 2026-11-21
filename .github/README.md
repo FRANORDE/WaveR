@@ -50,7 +50,7 @@ Language, theme, shuffle, loop and panel visibility are saved in `~/.waver/confi
 
 # Installation
 
-## Windows
+## Installer (Windows)
 
 Download the latest `WaveR-Setup-<version>.exe` from the [releases page](https://github.com/FRANORDE/WaveR/releases/latest) (use releases! Downloading the code directly might be unstable).
 
